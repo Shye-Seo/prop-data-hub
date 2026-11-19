@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+      - name: 타입 검사
+        run: pnpm typecheck
+      - name: 단위·통합 테스트
+        run: pnpm test
+      - name: 프로덕션 빌드
+        run: pnpm --filter @prop/web build
+      - name: Playwright 브라우저 설치
+        run: pnpm exec playwright install --with-deps chromium
+      - name: E2E 테스트 (프로덕션 빌드 대상)
+        run: pnpm test:e2e
+      - name: 실패 산출물 보관
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - name: API 이미지 빌드 확인
+        run: docker build -f infra/docker/api.Dockerfile -t prop-data-hub-api:ci .
+      - name: 수집 워커 이미지 빌드 확인
+        run: docker build -f infra/docker/collector.Dockerfile -t prop-data-hub-collector:ci .
+      - name: 웹 이미지 빌드 확인
+        run: docker build -f infra/docker/web.Dockerfile -t prop-data-hub-web:ci .

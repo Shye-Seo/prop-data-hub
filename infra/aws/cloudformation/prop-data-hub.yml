@@ -1,0 +1,483 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  prop-data-hub 운영 구성 - ECS Fargate(API, 수집 워커) + RDS PostgreSQL 16 + S3/CloudFront(정적 데모)
+  + EventBridge Scheduler(매일 수집) + CloudWatch 알람 + SQS DLQ.
+  VPC와 서브넷은 기존 것을 파라미터로 받는다. 이 템플릿은 로컬에서 문법 검증만 했고 실제 배포는 하지 않았다.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: 기존 VPC ID
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: ALB를 둘 퍼블릭 서브넷 2개
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: ECS 태스크와 RDS를 둘 프라이빗 서브넷 2개
+  ApiImage:
+    Type: String
+    Description: "API 컨테이너 이미지 (예: 123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/prop-data-hub-api:latest)"
+  CollectorImage:
+    Type: String
+    Description: 수집 워커 컨테이너 이미지
+  DbPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 12
+    Description: RDS 마스터 비밀번호
+  MolitServiceKey:
+    Type: String
+    NoEcho: true
+    Description: 공공데이터포털 서비스키(Decoding)
+  EcosApiKey:
+    Type: String
+    NoEcho: true
+    Description: 한국은행 ECOS 인증키
+  CertificateArn:
+    Type: String
+    Default: ""
+    Description: (선택) ALB HTTPS 인증서 ARN. 비우면 HTTP만 생성한다.
+
+Conditions:
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, ""]]
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # 네트워크 / 보안 그룹
+  # ---------------------------------------------------------------------------
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: prop-data-hub ALB
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  ServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: prop-data-hub ECS tasks
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: prop-data-hub RDS
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ServiceSecurityGroup
+
+  # ---------------------------------------------------------------------------
+  # RDS PostgreSQL 16
+  # ---------------------------------------------------------------------------
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: prop-data-hub private subnets
+      SubnetIds: !Ref PrivateSubnetIds
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      EngineVersion: "16.4"
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: "20"
+      MaxAllocatedStorage: 100
+      StorageType: gp3
+      StorageEncrypted: true
+      DBName: prop_data_hub
+      MasterUsername: prop
+      MasterUserPassword: !Ref DbPassword
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: "18:00-19:00"
+      AutoMinorVersionUpgrade: true
+      PubliclyAccessible: false
+      EnablePerformanceInsights: true
+
+  # ---------------------------------------------------------------------------
+  # ECS 클러스터 / 태스크 정의
+  # ---------------------------------------------------------------------------
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: prop-data-hub
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
+  LogGroupApi:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/prop-data-hub/api
+      RetentionInDays: 30
+
+  LogGroupCollector:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/prop-data-hub/collector
+      RetentionInDays: 30
+
+  ApiTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: prop-data-hub-api
+      Cpu: "512"
+      Memory: "1024"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: api
+          Image: !Ref ApiImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8080
+              Protocol: tcp
+          Environment:
+            - Name: PORT
+              Value: "8080"
+            - Name: NODE_ENV
+              Value: production
+            - Name: CORS_ORIGIN
+              Value: "*"
+          Secrets:
+            - Name: DATABASE_URL
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prop-data-hub/database-url"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroupApi
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: api
+          HealthCheck:
+            Command: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 20
+
+  CollectorTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: prop-data-hub-collector
+      Cpu: "512"
+      Memory: "1024"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: collector
+          Image: !Ref CollectorImage
+          Essential: true
+          Environment:
+            - Name: MOLIT_REQUESTS_PER_SECOND
+              Value: "5"
+            - Name: COLLECTOR_TRIGGER
+              Value: eventbridge
+          Secrets:
+            - Name: DATABASE_URL
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prop-data-hub/database-url"
+            - Name: MOLIT_SERVICE_KEY
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prop-data-hub/molit-service-key"
+            - Name: ECOS_API_KEY
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prop-data-hub/ecos-api-key"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroupCollector
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: collector
+      RetryStrategy:
+        Attempts: 2
+
+  # ---------------------------------------------------------------------------
+  # ALB + API 서비스
+  # ---------------------------------------------------------------------------
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: prop-data-hub
+      Scheme: internet-facing
+      Type: application
+      Subnets: !Ref PublicSubnetIds
+      SecurityGroups:
+        - !Ref AlbSecurityGroup
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: prop-data-hub-api
+      TargetType: ip
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: "200"
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasCertificate
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  ApiService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - Listener
+      - Database
+    Properties:
+      ServiceName: prop-data-hub-api
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref ApiTaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: 2
+      PlatformVersion: LATEST
+      HealthCheckGracePeriodSeconds: 30
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets: !Ref PrivateSubnetIds
+          SecurityGroups:
+            - !Ref ServiceSecurityGroup
+      LoadBalancers:
+        - ContainerName: api
+          ContainerPort: 8080
+          TargetGroupArn: !Ref TargetGroup
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 50
+        MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+
+  # ---------------------------------------------------------------------------
+  # EventBridge Scheduler (매일 02:00 KST 수집)
+  # ---------------------------------------------------------------------------
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: run-collector-task
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ecs:RunTask
+                Resource: !Ref CollectorTaskDefinition
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !GetAtt TaskExecutionRole.Arn
+                  - !GetAtt TaskRole.Arn
+
+  DailyCollectionSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: prop-data-hub-daily-collection
+      Description: 매일 02:00 KST 실거래·거시지표 수집
+      ScheduleExpression: cron(0 2 * * ? *)
+      ScheduleExpressionTimezone: Asia/Seoul
+      FlexibleTimeWindow:
+        Mode: OFF
+      State: ENABLED
+      Target:
+        Arn: !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${Cluster}"
+        RoleArn: !GetAtt SchedulerRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref CollectorTaskDefinition
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: DISABLED
+              Subnets: !Ref PrivateSubnetIds
+              SecurityGroups:
+                - !Ref ServiceSecurityGroup
+          TaskCount: 1
+
+  # ---------------------------------------------------------------------------
+  # 정적 데모 (S3 + CloudFront)
+  # ---------------------------------------------------------------------------
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "prop-data-hub-demo-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: prop-data-hub-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        PriceClass: PriceClass_200
+        Origins:
+          - Id: s3-origin
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            OriginAccessControlId: !Ref OriginAccessControl
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: s3-origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          Compress: true
+
+  SiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${SiteBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
+
+  # ---------------------------------------------------------------------------
+  # 관측성
+  # ---------------------------------------------------------------------------
+  Api5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: prop-data-hub-api-5xx
+      AlarmDescription: API 5xx 비율이 5분간 5%를 넘으면 알린다.
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt LoadBalancer.LoadBalancerFullName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  DatabaseCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: prop-data-hub-rds-cpu
+      AlarmDescription: RDS CPU 사용률이 5분 평균 80%를 넘으면 알린다.
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref Database
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+
+Outputs:
+  ApiUrl:
+    Description: API ALB 주소
+    Value: !Sub "http://${LoadBalancer.DNSName}"
+  DatabaseEndpoint:
+    Description: RDS 엔드포인트
+    Value: !GetAtt Database.Endpoint.Address
+  DemoDistributionDomain:
+    Description: 정적 데모 CloudFront 도메인
+    Value: !GetAtt Distribution.DomainName
+  SiteBucketName:
+    Description: docs/ 산출물을 올릴 S3 버킷
+    Value: !Ref SiteBucket

@@ -1,0 +1,68 @@
+name: prop-data-hub
+
+# 로컬 전용 구성이다. 실제 운영은 infra/aws/README.md의 ECS Fargate + RDS 구성으로 옮긴다.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: prop
+      POSTGRES_PASSWORD: prop
+      POSTGRES_DB: prop_data_hub
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prop -d prop_data_hub"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    environment:
+      DATABASE_URL: postgres://prop:prop@postgres:5432/prop_data_hub
+      PORT: 8080
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:8081
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  collector:
+    build:
+      context: .
+      dockerfile: infra/docker/collector.Dockerfile
+    environment:
+      DATABASE_URL: postgres://prop:prop@postgres:5432/prop_data_hub
+      MOLIT_SERVICE_KEY: ${MOLIT_SERVICE_KEY:-}
+      ECOS_API_KEY: ${ECOS_API_KEY:-}
+      MOLIT_REQUESTS_PER_SECOND: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # 1회 실행 후 종료한다. 운영에서는 EventBridge Scheduler가 같은 이미지를 주기적으로 실행한다.
+    command: ["pnpm", "--filter", "@prop/collector", "once"]
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    ports:
+      - "8081:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:

@@ -1,0 +1,31 @@
+{
+  "name": "prop-data-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "부동산·거시지표 공공데이터 수집 파이프라인과 사용자 행동 이벤트 수집 체계를 갖춘 풀스택 모노레포",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @prop/api --filter @prop/web dev",
+    "dev:api": "pnpm --filter @prop/api dev",
+    "dev:web": "pnpm --filter @prop/web dev",
+    "dev:collector": "pnpm --filter @prop/collector dev",
+    "build": "pnpm --filter @prop/web build",
+    "build:pages": "pnpm --filter @prop/web build",
+    "preview": "node scripts/serve-static.mjs docs 4173",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:e2e": "playwright test",
+    "db:init": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f infra/postgres/init.sql",
+    "collector:once": "pnpm --filter @prop/collector once"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "22.10.2",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2",
+    "vitest": "2.1.8"
+  }
+}
