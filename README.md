@@ -268,7 +268,15 @@ DDL과 업서트 SQL은 PostgreSQL 16 호환 WASM 엔진(PGlite)에서 실제 �
 - 데모 데이터의 거래 금액·층·계약일은 화면 검증용 대표 표본입니다. 단지명·준공연도·세대수는 공개 정보를 참고했습니다.
 - 이 브라우저의 행동 이벤트는 IndexedDB에만 저장됩니다. 수집 API에 연결하려면 `VITE_API_BASE`를 설정합니다.
 - GitHub Actions 워크플로는 저장소 연결의 앱 권한(Workflows) 제한으로 푸시하지 못합니다.
-  같은 내용을 `ci.github-workflow.yml`에 두었으니 GitHub 웹에서 `.github/workflows/ci.yml`로 추가하면 됩니다.
+
+### CI 활성화 (웹에서 1회)
+
+1. <https://github.com/Shye-Seo/prop-data-hub/new/main/.github/workflows> 를 연다.
+2. 파일 이름에 `ci.yml`을 입력한다.
+3. 저장소 루트의 `ci.github-workflow.yml` 내용을 그대로 붙여넣고 커밋한다.
+4. Actions 탭에서 첫 실행(설치 → 타입 검사 → 테스트 111건 → 빌드 → Playwright 9건)이 도는 것을 확인한다.
+
+워크플로는 `pnpm test:e2e`가 `docs/`를 서빙해 검증하므로, 빌드 산출물이 저장소에 커밋돼 있어야 합니다.
 
 ## 11. 이 프로젝트에서 신경 쓴 것
 
