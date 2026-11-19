@@ -5,6 +5,8 @@ TypeScript 풀스택 모노레포입니다. 공공데이터 수집 파이프라�
 행동 이벤트 수집 체계를 한 저장소에서 실행합니다.
 
 - 라이브 데모: <https://shye-seo.github.io/prop-data-hub/> (정적 빌드, 백엔드 없이 동작)
+  — 저장소 Settings › Pages에서 소스를 `main` / `/docs`로 지정하면 활성화됩니다. 앱 권한상 Pages 설정 API는 403이라
+  저장소 소유자가 한 번 지정해야 합니다.
 - 대상 채용공고: 한국자산해독원(KADI) 풀스택 개발자 — TypeScript · React · Node.js · PostgreSQL · AWS,
   pnpm 모노레포, 공공데이터 파이프라인, 행동 지표/이벤트 정의, Playwright 자동화 경험
 
