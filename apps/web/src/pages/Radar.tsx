@@ -316,7 +316,7 @@ export default function Radar() {
                       {selected.complexName} · {formatDate(selected.dealDate)} 계약
                     </p>
                     <p className="num mt-0.5 text-[11px] text-slate-600">
-                      {formatKrwKorean(selected.priceKrw)} · {formatArea(selected.areaM2)}㎡ · {selected.floor ?? '-'}층 · 평당가{' '}
+                      {formatKrwKorean(selected.priceKrw)} · {formatArea(selected.areaM2)} · {selected.floor ?? '-'}층 · 평당가{' '}
                       {formatPyeongPrice(selected.pricePerPyeong)} · {selected.dealType}
                     </p>
                   </div>
@@ -390,7 +390,7 @@ export default function Radar() {
                       <td className="px-2 py-2 text-xs text-slate-600">
                         {deal.sigungu} {deal.dong}
                       </td>
-                      <td className="num px-2 py-2 text-right text-xs text-slate-600">{formatArea(deal.areaM2)}㎡</td>
+                      <td className="num px-2 py-2 text-right text-xs text-slate-600">{formatArea(deal.areaM2)}</td>
                       <td className="num px-2 py-2 text-xs text-slate-500">{formatDate(deal.dealDate)}</td>
                       <td className="num px-2 py-2 text-right text-[13px] font-semibold text-ink-800">
                         {formatKrwKorean(deal.priceKrw)}
