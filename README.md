@@ -3,7 +3,9 @@
 부동산 실거래가·전월세와 거시지표를 수집·정규화해 화면 지표로 만들고, 사용자 행동 이벤트를 같은 스키마로 수집하는
 TypeScript 풀스택 모노레포입니다. 공공데이터 수집 파이프라인, PostgreSQL 스키마, REST API, React 대시보드,
 행동 이벤트 수집 체계를 한 저장소에서 실행합니다. 전월세 표본으로 전세가율·이상 거래 리스크를 계산하고,
-면접관이 라이브 데모에서 직접 눌러 보는 이벤트 파이프라인 인스펙터와 API 문서(Mock 실행)를 포함합니다.
+부산 6개 구의 **350세대 이상 단지 매매가를 최근 중위가와 비교해 급매·저평가만 모으는 레이더**와 맞춤 알림 규칙을
+포함합니다. 면접관이 라이브 데모에서 직접 눌러 보는 이벤트 파이프라인 인스펙터와 API 문서(Mock 실행)도 같은
+저장소에 있습니다.
 
 - 라이브 데모: <https://shye-seo.github.io/prop-data-hub/> (정적 빌드, 백엔드 없이 동작)
   — 저장소 Settings › Pages에서 소스를 `main` / `/docs`로 지정하면 활성화됩니다. 앱 권한상 Pages 설정 API는 403이라
@@ -30,7 +32,10 @@ TypeScript 풀스택 모노레포입니다. 공공데이터 수집 파이프라�
 | REST API + OpenAPI 3.0 | `apps/api/src/server.ts`, `packages/shared/src/openapi.ts` | `http://localhost:8080/api-docs` · 데모 › API 문서 |
 | Docker Compose | `docker-compose.yml`, `infra/docker/*` | `docker compose up --build` |
 | AWS 아키텍처 | `infra/aws/` (CloudFormation + 운영 문서) | 배포 전 문서 |
-| Playwright E2E | `e2e/app.spec.ts` (12 시나리오) | `pnpm test:e2e` |
+| 350세대+ 매매 급매 레이더 | `packages/shared/src/radar.ts`, `GET /api/v1/radar/deals`, `apps/web/src/pages/Radar.tsx` | 데모 › 급매 레이더 |
+| 기준 시세 대비 할인·매물 점수 | `radar.ts`(할인율 45 · 전세가율 20 · 거래량 15 · 규모 20) | `pnpm --filter @prop/shared test` |
+| 맞춤 알림 규칙·payload 미리보기 | `alert_rules` 테이블, `POST /api/v1/radar/alert-rules`, `alert_rule_create` 이벤트 | 데모 › 급매 레이더 › 알림 규칙 |
+| Playwright E2E | `e2e/app.spec.ts` (13 시나리오) | `pnpm test:e2e` |
 
 ## 2. 구조
 
@@ -40,7 +45,7 @@ prop-data-hub/
 │  ├─ web/          React 18 + Vite + Tailwind. 데모 모드에서는 번들 샘플 데이터로 동작
 │  ├─ api/          Fastify + pg + zod. 인메모리/PostgreSQL 스토어를 같은 인터페이스로 사용
 │  └─ collector/    수집 워커. 매매·전월세 MOLIT, ECOS 커넥터, rate-limit, 재시도, DLQ, 실행 이력
-├─ packages/shared/ 타입·zod 스키마·XML/JSON 정규화·거래 해시·지표 계산 (web/api/collector 공용)
+├─ packages/shared/ 타입·zod 스키마·XML/JSON 정규화·거래 해시·지표 계산·급매 레이더 점수 (web/api/collector 공용)
 ├─ infra/
 │  ├─ postgres/init.sql   테이블·인덱스·파티션·집계 뷰·퍼널 함수
 │  ├─ docker/             API·collector·web 이미지, nginx 설정
@@ -58,6 +63,10 @@ prop-data-hub/
       │                    └─ pipeline_runs / run_tasks / DLQ │
       └─ ECOS(금리·물가)                                        │
 사용자 행동 ──▶ tracker(배치·검증) ──▶ POST /api/v1/events ─────┘ (user_behavior_events → event_funnel_daily)
+
+매매 실거래 ──▶ 기준 시세(같은 단지·면적 6개월 중위) ──▶ 할인율·점수 ──▶ GET /api/v1/radar/deals
+                                                        │
+                        알림 규칙(alert_rules) ──▶ 매칭 ──▶ 카카오 알림톡·웹훅 payload 미리보기
 ```
 
 ## 3. 실행
@@ -78,6 +87,7 @@ pnpm --filter @prop/collector once                 # 매매 + ECOS
 pnpm --filter @prop/collector once -- --rent       # 전월세까지 수집(전세가율 원천)
 pnpm --filter @prop/collector once -- --json
 pnpm --filter @prop/collector once -- --retry-dlq  # 실패 건 재시도(매매·전월세 구분)
+pnpm --filter @prop/collector once -- --lawdCd=26230,26290   # 지역을 좁혀 실행(기본값은 레이더 대상 6개 구)
 ```
 
 PostgreSQL을 붙이려면:
@@ -167,14 +177,78 @@ RETURNING (xmax = 0) AS inserted;
 모든 수집 행은 `as_of_date`(데이터 기준 시점)와 `collected_at`(수집 시각)을 함께 저장합니다.
 실거래는 계약 연월의 1일, 월간 지표는 말일이 기준일입니다. 화면은 기준일을 표시하고, 수집 시점과 섞어 쓰지 않습니다.
 
-## 5. 행동 이벤트 설계
+## 5. 급매 레이더 (350세대+ 매매 저가 알림)
 
-`packages/shared/src/events.ts`에 9종 이벤트와 5단계 퍼널을 정의하고, 프론트 트래커와 수집 API가 같은 zod 스키마로 검증합니다.
+부산 주요 구(부산진구·동래구·남구·해운대구·연제구·수영구)의 아파트 중 **350세대 이상 단지**만 대상으로,
+매매 실거래가가 **같은 단지·같은 면적 구간의 최근 6개월 중위 거래가**보다 낮은 매물을 모읍니다. 기본 조건은
+`350세대 이상` · `중위가 대비 -8% 이하`입니다.
+
+### 5.1 계산 정의
+
+```
+기준 시세(중위가) = 같은 단지·같은 면적 구간(60·85·115㎡ 경계) 최근 6개월 중위 매매가, 해당 거래 자신 제외
+할인율            = (거래가 − 기준 시세) ÷ 기준 시세 × 100        (음수 = 저평가)
+3개월 거래량      = 같은 단지·면적 구간, 해당 월 포함 최근 3개월 거래 건수
+전세가율          = 같은 단지·면적 구간의 최근 전세 보증금 평당가 ÷ 매매 평당가 × 100
+매물 점수(0~100)  = 할인율 45 + 전세가율 20 + 3개월 거래량 15 + 단지 규모 20
+```
+
+| 항목 | 배점 |
+| --- | --- |
+| 할인율 | -4% 7 · -6% 14 · -8% 24 · -10% 32 · -12% 38 · -15%↓ 45 |
+| 전세가율 | 65%↓ 20 · 70%↓ 16 · 75%↓ 12 · 80%↓ 6 (그 이상 0) |
+| 3개월 거래량 | 2건 4 · 3건 7 · 5건 11 · 8건↑ 15 |
+| 단지 규모 | 350세대 8 · 500세대 12 · 700세대 16 · 1,000세대↑ 20 |
+
+- 등급은 **70점 이상 적극 검토 / 55점 이상 검토 / 40점 이상 관찰 / 그 미만 기준 미달**입니다.
+- 기준 시세 표본이 3건 미만인 (단지, 면적 구간)은 할인율을 만들지 않고 목록에서 뺍니다(`thinReferenceDeals`로 집계).
+  표본 1~2건으로 만든 중위가는 급매를 급매로 보이게 하는 가장 흔한 착시입니다.
+- -20% 이하 할인과 직거래 신고는 점수와 별도로 **특수 조건 확인** 신호를 붙입니다. 수리 필요·층/향·가족 간 거래는
+  레이더가 판단할 수 없으므로 화면에 근거를 남기고 계약 전 확인 항목으로 넘깁니다.
+
+### 5.2 API와 화면
+
+```bash
+# 기본: 350세대 이상 · -8% 이하 · 점수 내림차순
+curl "http://localhost:8080/api/v1/radar/deals?limit=10"
+
+# 조건 지정: 부산진구·남구, 84㎡(60~85), -10% 이하, 40점 이상
+curl "http://localhost:8080/api/v1/radar/deals?lawdCds=26230,26290&areaBand=60to85&maxDiscountPct=10&minScore=40"
+
+# 세대수 조건을 끄고 전체 단지 보기
+curl "http://localhost:8080/api/v1/radar/deals?includeBelowThreshold=true"
+
+# 알림 규칙 저장 + 미리보기(카카오 알림톡·웹훅 payload) + alert_rule_create 이벤트
+curl -X POST "http://localhost:8080/api/v1/radar/alert-rules" -H 'content-type: application/json' -d '{
+  "name": "부산진구·남구 84㎡ 급매",
+  "lawdCds": ["26230", "26290"],
+  "minHouseholds": 350, "areaBand": "60to85", "maxDiscountPct": 8, "minScore": 40,
+  "channels": ["kakao_alimtalk", "webhook"],
+  "sessionId": "sess-8f2a1c9d3e", "userPseudoId": "user-2b7c4d1a9f"
+}'
+```
+
+화면(`#radar`)은 같은 shared 함수로 브라우저에서 계산합니다. 구 선택·세대수 토글·평형대·목표 할인율·최소 점수를
+바꾸면 목록과 KPI가 즉시 갱신되고, 행을 누르면 기준 시세·갭·점수 근거가 열립니다. 같은 조건을 알림 규칙으로
+저장하면 카카오 알림톡 말풍선과 웹훅 JSON을 미리보기로 보여주고 `alert_rule_create` 이벤트를 남깁니다.
+
+### 5.3 알림 범위
+
+- 저장된 규칙은 `alert_rules` 테이블(구 목록·세대수·평형·할인율·점수·채널)에 남습니다.
+- 데모(GitHub Pages)는 백엔드가 없으므로 규칙을 브라우저 localStorage에 보관하고 미리보기까지만 동작합니다.
+- **실제 알림톡 발송·웹훅 호출은 하지 않습니다.** SENS 발신 프로필·템플릿 승인, 웹훅 URL·서명 시크릿은 배포
+  환경에서 정해지며, 코드는 payload 형태(`PROP_RADAR_DEAL_01`)를 고정해 두었습니다.
+
+## 6. 행동 이벤트 설계
+
+`packages/shared/src/events.ts`에 11종 이벤트와 5단계 퍼널을 정의하고, 프론트 트래커와 수집 API가 같은 zod 스키마로 검증합니다.
 
 | 이벤트 | 발생 시점 | 주요 속성 | 활용 |
 | --- | --- | --- | --- |
 | `page_view` | 화면 진입 | route, isInitialLoad, deviceType | 세션·도달 |
 | `region_filter_change` | 지역/단지/면적/기간 조건 확정(800ms 디바운스) | lawdCd, dong, complexId, areaBand, periodMonths, resultCount | 탐색 수요, 결과 0건 비율 |
+| `radar_filter_change` | 급매 레이더 조건 확정(800ms 디바운스) | lawdCds, minHouseholds, largeComplexOnly, areaBand, maxDiscountPct, minScore, resultCount | 레이더 세션, 결과 0건 비율, 규칙 저장 전환 |
+| `alert_rule_create` | 알림 규칙 저장 성공 | ruleId, lawdCds, minHouseholds, areaBand, maxDiscountPct, minScore, channels, matchedCount, source | 규칙 생성 수, 규칙당 매칭 건수 |
 | `complex_compare_add` | 비교함에 단지 추가 | complexIds, addedComplexId, compareCount | 비교 진입률 |
 | `listing_click` | 실거래·리스크 화면에서 단지(거래) 상세 열기 | complexId, aptName, dealHash, priceKrw, areaM2, source, jeonseRatioPct | 단지별 관심, 상세 진입률 |
 | `listing_save` | 관심 등록/해제 | complexId, aptName, action, savedCount | 관심 등록 전환 |
@@ -200,13 +274,13 @@ RETURNING (xmax = 0) AS inserted;
 세션 퍼널 전환율로 즉시 보여줍니다. 데모에서 직접 눌러 확인할 수 있고, 같은 계산을 `apps/web/src/lib/inspector.ts`에서
 테스트로 고정했습니다.
 
-## 6. 데이터베이스
+## 7. 데이터베이스
 
 `infra/postgres/init.sql`이 단일 스키마 원본입니다. 재적용해도 데이터가 유지됩니다.
 
 - **테이블**: `ingestion_sources`, `regions`, `apartment_complexes`, `apt_transactions`, `apt_rent_transactions`,
-  `macro_indicators`, `pipeline_runs`, `pipeline_run_tasks`, `dead_letter_queue`, `user_behavior_events`(월 파티션),
-  `event_funnel_daily`
+  `macro_indicators`, `pipeline_runs`, `pipeline_run_tasks`, `dead_letter_queue`, `alert_rules`,
+  `user_behavior_events`(월 파티션), `event_funnel_daily`
 - **뷰**: `v_jeonse_ratio_monthly`(단지·월·면적 구간 전세가율), `v_ingestion_quality`(수집 품질 점검)
 - **인덱스**: `apt_transactions` BRIN(계약일 기간 스캔), BTREE(지역·월·금액), GIN(단지명 tsvector),
   `apt_rent_transactions` BRIN(계약일) + BTREE(지역·월, 단지·월) + 전세 부분 인덱스,
@@ -220,7 +294,7 @@ RETURNING (xmax = 0) AS inserted;
 파티션 키를 포함해야 해서 `ON CONFLICT (deal_hash)`를 그대로 쓸 수 없습니다. 거래량이 커지면 `deal_month` 파티션 +
 `(deal_hash, deal_month)` 유니크로 바꾸는 편이 맞고, 그때는 업서트 충돌 대상도 함께 바꿔야 합니다.
 
-## 7. API
+## 8. API
 
 `/api-docs`에서 OpenAPI 3.0 문서를 CDN 없이 볼 수 있습니다.
 
@@ -234,6 +308,9 @@ RETURNING (xmax = 0) AS inserted;
 | GET | `/api/v1/transactions/monthly` | 지역 월별 중위가·평당가·거래량 |
 | GET | `/api/v1/rents` | 전월세 실거래(전세·월세, 기간·단지 필터) |
 | GET | `/api/v1/market/jeonse-ratio` | 월별 전세가율(단지·월·면적 구간 매칭) |
+| GET | `/api/v1/radar/deals` | 350세대+ 급매·저평가 레이더(할인율·점수·정렬) |
+| GET | `/api/v1/radar/alert-rules` | 저장된 알림 규칙 |
+| POST | `/api/v1/radar/alert-rules` | 알림 규칙 저장 + 카카오·웹훅 미리보기 + `alert_rule_create` |
 | GET | `/api/v1/macro` | 거시지표 시계열 |
 | GET | `/api/v1/macro/latest` | 지표별 최신값 |
 | GET | `/api/v1/pipeline/sources` | 출처·라이선스·기준일 정책 |
@@ -245,15 +322,17 @@ RETURNING (xmax = 0) AS inserted;
 | GET | `/api/v1/events/stats` | 이벤트 집계 + 퍼널 |
 | GET | `/api/v1/events/funnel` | 일 단위 순서 보정 퍼널 |
 
-## 8. 프론트엔드 데모
+## 9. 프론트엔드 데모
 
 `apps/web`은 GitHub Pages에 올릴 수 있는 정적 빌드입니다. 백엔드 없이 다음이 동작합니다.
 
 - 시장 개요: 지역별 중위가 추이, 거래량, 금리·물가 지표, 최근 수집 상태
 - 실거래 탐색: 지역·단지·면적·기간 필터, 평당가, 이상 거래·리스크 배지, 매물 클릭 상세, 관심 등록, CSV 저장
 - 단지 비교: 최대 3개 단지 평당가·전세가율 추이와 요약(전세가율·리스크 점수 행 포함)
-- 구별 리스크: 남구·수영구·해운대구의 중위 전세가율·평당가·거래량 비교 차트, 단지별 리스크 점수와 근거 신호,
+- 구별 리스크: 부산 6개 구의 중위 전세가율·평당가·거래량 비교 차트, 단지별 리스크 점수와 근거 신호,
   이상 거래 표본. 차트는 외부 CDN 없는 순수 SVG입니다.
+- 급매 레이더: 350세대 이상 토글, 구·평형대·목표 할인율·최소 점수 필터, 매물 점수와 근거 신호, 기준 시세 대비
+  할인율, 전세가율·갭, 맞춤 알림 규칙 저장과 카카오 알림톡·웹훅 payload 미리보기
 - API 문서: OpenAPI 3.0 오퍼레이션 목록, 파라미터·요청 예시, 예시 응답 실행(Mock), PostgreSQL 스키마·관계(ERD 요약)
 - 이벤트 파이프라인 인스펙터: 모든 화면 하단에서 이벤트 적재·검증·버퍼·집계 상태와 JSON payload, 세션 퍼널 확인
 - 금리 민감도: 매매가·자기자본·금리·기간·상환방식별 월 상환액, 총 이자, DSR 필요 소득
@@ -271,28 +350,29 @@ pnpm preview        # http://127.0.0.1:4173
 GitHub Pages는 `main` 브랜치의 `/docs` 폴더를 소스로 지정하면 됩니다(Settings → Pages → Build and deployment →
 Deploy from a branch → `main` / `/docs`).
 
-## 9. 테스트와 검증 결과 (2026-11-20)
+## 10. 테스트와 검증 결과 (2026-11-20)
 
 | 구분 | 명령 | 결과 |
 | --- | --- | --- |
-| 공용 라이브러리 (이벤트·리스크·전월세 정규화·OpenAPI·스키마 요약) | `pnpm --filter @prop/shared test` | 79 passed |
-| API (라우트 + PGlite 통합) | `pnpm --filter @prop/api test` | 32 passed |
-| 수집 워커 (HTTP·rate-limit·매매/전월세 파이프라인·PGlite) | `pnpm --filter @prop/collector test` | 32 passed |
-| 웹 데이터·리스크·인스펙터 | `pnpm --filter @prop/web test` | 20 passed |
-| 합계(단위·통합) | `pnpm test` | 163 passed |
+| 공용 라이브러리 (이벤트·리스크·레이더·전월세 정규화·OpenAPI·스키마 요약) | `pnpm --filter @prop/shared test` | 102 passed |
+| API (라우트 + PGlite 통합) | `pnpm --filter @prop/api test` | 39 passed |
+| 수집 워커 (HTTP·rate-limit·매매/전월세 파이프라인·PGlite) | `pnpm --filter @prop/collector test` | 33 passed |
+| 웹 데이터·리스크·레이더·인스펙터 | `pnpm --filter @prop/web test` | 28 passed |
+| 합계(단위·통합) | `pnpm test` | 202 passed |
 | 타입 검사 | `pnpm typecheck` | 4개 패키지 통과 |
-| E2E (프로덕션 빌드) | `pnpm test:e2e` | 12 passed |
-| 정적 빌드 | `pnpm build` | 성공 (JS 385KB / gzip 119KB, CSS 29KB / gzip 6KB) |
-| 수집 워커 1회 실행 | `pnpm --filter @prop/collector once -- --rent` | 매매 18태스크 중 17성공(300건), 전월세 17/18(236건, 전세 191·월세 45), ECOS 6건, DLQ 2건 |
+| E2E (프로덕션 빌드) | `pnpm test:e2e` | 13 passed |
+| 정적 빌드 | `pnpm build` | 성공 (JS 430KB / gzip 132KB, CSS 31KB / gzip 6KB) |
+| 수집 워커 1회 실행 | `pnpm --filter @prop/collector once -- --rent` | 매매 36태스크 중 35성공(609건), 전월세 35/36(491건, 전세 395·월세 96), ECOS 6건, DLQ 2건 |
 
 E2E 시나리오: 개요 렌더링 / 지역 필터 / 실거래 필터·CSV / 단지 비교(3개 제한) / 금리 시뮬레이터 /
 파이프라인 출처·실행·DLQ 재시도 / 이벤트 퍼널·스트림·스키마 / 새로고침 후 이벤트 유지 / 모바일 레이아웃 /
-매물 클릭·관심 등록 → 인스펙터 반영 / 구별 리스크 차트·상세 신호 / API 문서 Mock 실행·스키마 탭.
+매물 클릭·관심 등록 → 인스펙터 반영 / 구별 리스크 차트·상세 신호 / 급매 레이더 350세대 토글·알림 규칙 미리보기 /
+API 문서 Mock 실행·스키마 탭.
 
 DDL과 업서트 SQL은 PostgreSQL 16 호환 WASM 엔진(PGlite)에서 실제 실행해 검증했습니다. BRIN/GIN 인덱스 생성,
 월 파티션, 멱등 업서트, `refresh_event_funnel_day`, 머티리얼라이즈드 뷰까지 이 테스트에서 확인합니다.
 
-## 10. 검증 범위와 미연결 범위
+## 11. 검증 범위와 미연결 범위
 
 **검증한 것**
 
@@ -300,10 +380,11 @@ DDL과 업서트 SQL은 PostgreSQL 16 호환 WASM 엔진(PGlite)에서 실제 �
 - 초당 호출 제한, 재시도·백오프, 4xx 즉시 실패, Retry-After
 - 지역×월 배치 실행의 성공/부분 성공/실패 상태 전이와 DLQ 적재·재처리
 - PostgreSQL DDL·인덱스·파티션·집계 뷰·퍼널 함수 (PGlite, PostgreSQL 16)
-- API 18개 경로의 응답과 검증 오류(400/404/207), OpenAPI 문서와 Mock 응답(모든 오퍼레이션)
+- 레이더 기준 시세·할인율·점수 계산, 350세대 필터, 구·평형·할인율·점수 조건, 알림 규칙 저장과 payload 미리보기
+- API 21개 경로의 응답과 검증 오류(400/404/207), OpenAPI 문서와 Mock 응답(모든 오퍼레이션)
 - 이벤트 스키마 검증, 중복 제거, 배치 수집, 퍼널 집계
 - 전세가율 면적 구간 매칭, 이상 거래 탐지, 리스크 배점 (shared 테스트 + 샘플 데이터셋 고정)
-- 프로덕션 빌드에 대한 Playwright 12개 시나리오, 모바일 390px 레이아웃
+- 프로덕션 빌드에 대한 Playwright 13개 시나리오, 모바일 390px 레이아웃
 
 **미연결·확인 필요**
 
@@ -314,7 +395,10 @@ DDL과 업서트 SQL은 PostgreSQL 16 호환 WASM 엔진(PGlite)에서 실제 �
   계정·VPC·도메인이 정해지면 `infra/aws/README.md` 순서로 적용합니다.
 - Docker 이미지는 로컬 환경에 Docker가 없어 빌드하지 못했습니다. Compose 구성과 Dockerfile은 작성만 되어 있습니다.
 - 데모 데이터의 거래 금액·층·계약일과 전월세 보증금·월세는 화면 검증용 대표 표본입니다. 단지명·준공연도·세대수는
-  공개 정보(공동주택 기본정보·단지 안내)를 참고했습니다.
+  공개 정보(공동주택 기본정보·K-apt·단지 목록)를 참고했고, 법정동 10자리 코드는 행정표준코드 법정동 목록 기준입니다.
+  세대수는 공개 목록의 값을 옮겨 적었으며, 실서비스에서는 K-apt/공동주택 기본정보 API로 매일 갱신하는 자리입니다.
+- 알림은 **미리보기까지만** 구현했습니다. SENS 발신 프로필·템플릿 승인과 웹훅 수신 URL·서명 시크릿이 없어 실제
+  발송 경로는 호출하지 않았습니다. 발송 워커·재시도·발송 로그는 다음 단계입니다.
 - 이 브라우저의 행동 이벤트는 IndexedDB에만 저장됩니다. 수집 API에 연결하려면 `VITE_API_BASE`를 설정합니다.
 - 전월세도 픽스처 응답으로 경로만 검증했습니다. 실제 전월세 API 호출은 매매와 같은 `MOLIT_SERVICE_KEY`로 가능하지만
   이 저장소에서는 라이브 호출을 하지 않았습니다.
@@ -326,11 +410,11 @@ DDL과 업서트 SQL은 PostgreSQL 16 호환 WASM 엔진(PGlite)에서 실제 �
 1. <https://github.com/Shye-Seo/prop-data-hub/new/main/.github/workflows> 를 연다.
 2. 파일 이름에 `ci.yml`을 입력한다.
 3. 저장소 루트의 `ci.github-workflow.yml` 내용을 그대로 붙여넣고 커밋한다.
-4. Actions 탭에서 첫 실행(설치 → 타입 검사 → 테스트 163건 → 빌드 → Playwright 12건)이 도는 것을 확인한다.
+4. Actions 탭에서 첫 실행(설치 → 타입 검사 → 테스트 202건 → 빌드 → Playwright 13건)이 도는 것을 확인한다.
 
 워크플로는 `pnpm test:e2e`가 `docs/`를 서빙해 검증하므로, 빌드 산출물이 저장소에 커밋돼 있어야 합니다.
 
-## 11. 이 프로젝트에서 신경 쓴 것
+## 12. 이 프로젝트에서 신경 쓴 것
 
 - **재수집이 안전해야 한다.** 공공데이터는 같은 달을 여러 번 다시 받습니다. 해시 기반 멱등 업서트와
   신규/갱신 카운트 분리가 없으면 중복·집계 왜곡이 생깁니다.
@@ -342,10 +426,13 @@ DDL과 업서트 SQL은 PostgreSQL 16 호환 WASM 엔진(PGlite)에서 실제 �
   정의 없는 수집이 생기지 않습니다.
 - **데모가 실제로 동작해야 한다.** 외부 CDN 없이 정적 파일만으로 차트·필터·이벤트 수집·퍼널·API 문서가 돌아가고,
   같은 산출물을 Playwright가 검증합니다.
+- **'싸다'를 정의부터 고정한다.** 급매는 주관이 아니라 같은 단지·면적 구간 중위가 대비 할인율로 정의하고,
+  표본 3건 미만은 판단하지 않습니다. 점수도 할인율만 보지 않고 갭 부담·유동성·단지 규모를 함께 봅니다.
+  알림 문구·API 응답·화면·테스트가 같은 함수를 쓰므로 "화면에서는 -8%, 알림에서는 -9%"가 생기지 않습니다.
 - **지표의 뜻을 화면에서 설명한다.** 전세가율·이상치·리스크 점수는 계산식과 한계(표본 부족, 감정평가 아님)를
   화면 문구와 README에 같이 적었습니다.
 
-## 12. 작성자
+## 13. 작성자
 
 4년 차 풀사이클 개발자로 커머스 SaaS에서 기획, MySQL 스키마 설계, PHP/TypeScript 백엔드, React 프론트엔드,
 외부 API 연동(인스타그램·네이버클라우드 알림톡), 운영·유지보수를 1인으로 맡았습니다. 이 저장소는 그 경험을

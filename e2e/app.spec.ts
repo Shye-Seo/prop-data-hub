@@ -231,7 +231,7 @@ test('구별 리스크 화면이 전세가율·이상 거래 배지와 상세 �
   await expect(page.locator('svg[aria-label*="전세가율 추이"] polyline').first()).toBeVisible();
 
   const rows = page.locator('[data-testid="risk-table"] tbody tr');
-  await expect(rows).toHaveCount(16);
+  await expect(rows).toHaveCount(33);
   await expect(rows.first()).toContainText('%');
 
   await page.getByTestId('risk-row-MOLIT-26290-005').click();
@@ -246,10 +246,49 @@ test('구별 리스크 화면이 전세가율·이상 거래 배지와 상세 �
   await expect(page.getByText('삼익비치타운').first()).toBeVisible();
 });
 
+test('급매 레이더가 350세대 필터·세대수 토글·알림 규칙 미리보기를 제공한다', async ({ page }) => {
+  await navigateTo(page, /급매 레이더/);
+  await expect(page.getByRole('heading', { name: '급매 레이더' })).toBeVisible();
+  await expect(page.getByText('레이더 조건')).toBeVisible();
+
+  const rows = page.locator('[data-testid="radar-table"] tbody tr');
+  await expect.poll(async () => rows.count()).toBeGreaterThan(0);
+  const largeOnly = await rows.count();
+  await expect(rows.first()).toContainText('세대');
+
+  // 세대수 토글을 끄면 350세대 미만 단지의 급매까지 늘어난다.
+  await page.getByTestId('radar-large-only').uncheck();
+  await expect.poll(async () => rows.count()).toBeGreaterThan(largeOnly);
+  await expect(page.getByTestId('radar-table')).toContainText('가야KTe편한세상');
+  await page.getByTestId('radar-large-only').check();
+  await expect.poll(async () => page.getByTestId('radar-table').innerText()).not.toContain('가야KTe편한세상');
+
+  // 행을 누르면 근거가 열리고 listing_click(source=radar)이 기록된다.
+  await rows.first().click();
+  await expect(page.getByTestId('radar-detail')).toContainText('기준 시세(중위)');
+  await waitForEvent(page, 'listing_click', (event) => event.props.source === 'radar');
+
+  // 구 조건을 바꾸면 800ms 뒤 radar_filter_change가 남는다.
+  await page.getByTestId('radar-district-26230').click();
+  await waitForEvent(
+    page,
+    'radar_filter_change',
+    (event) => Array.isArray(event.props.lawdCds) && (event.props.lawdCds as string[]).includes('26230'),
+  );
+
+  // 알림 규칙 저장 → 카카오 알림톡·웹훅 payload 미리보기 + alert_rule_create 이벤트
+  await page.getByTestId('radar-rule-name').fill('부산진구 급매');
+  await page.getByTestId('radar-save-rule').click();
+  await expect(page.getByTestId('radar-preview')).toContainText('PROP_RADAR_DEAL_01');
+  await expect(page.getByTestId('radar-preview')).toContainText('부산진구 급매');
+  await waitForEvent(page, 'alert_rule_create', (event) => Number(event.props.matchedCount) >= 0);
+  await expect(page.getByTestId('radar-rule-list')).toContainText('부산진구 급매');
+});
+
 test('API 문서에서 OpenAPI 오퍼레이션과 스키마를 열람하고 Mock 응답을 실행한다', async ({ page }) => {
   await navigateTo(page, /API 문서/);
   await expect(page.getByRole('heading', { name: 'API 문서' })).toBeVisible();
-  await expect(page.getByText('OpenAPI 1.1.0', { exact: false })).toBeVisible();
+  await expect(page.getByText('OpenAPI 1.2.0', { exact: false })).toBeVisible();
 
   await page.getByRole('button', { name: /\/api\/v1\/rents/ }).click();
   await expect(page.getByRole('paragraph').filter({ hasText: '전월세 실거래 조회' })).toBeVisible();

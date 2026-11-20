@@ -3,7 +3,7 @@ import type { EventName } from './constants';
 export interface Region {
   /** 시군구 5자리 코드(국토교통부 실거래가 API의 LAWD_CD). 예: 부산 남 26290 */
   lawdCd: string;
-  /** 법정동 10자리 코드. 예: 문현동 2629051000 */
+  /** 법정동 10자리 코드(행정표준코드 법정동 목록). 예: 문현동 2629010900 */
   legalDongCode: string;
   sido: string;
   sigungu: string;
@@ -261,6 +261,124 @@ export interface PriceAnomaly {
   /** modified z-score(MAD 기준). 표본이 작으면 null. */
   modifiedZ: number | null;
   kind: 'sharp_drop' | 'outlier_high' | 'outlier_low';
+}
+
+/** 전용면적 구간 키. 레이더·알림 규칙·이벤트 속성이 같은 이름을 쓴다. */
+export type AreaBandKey = 'under60' | '60to85' | '85to115' | 'over115';
+
+export type DealGrade = 'strong' | 'good' | 'watch' | 'marginal';
+
+export type DealSignalCode =
+  | 'discount'
+  | 'discount_check'
+  | 'jeonse_ratio'
+  | 'liquidity'
+  | 'scale'
+  | 'direct_trade';
+
+/** 매물 점수 근거. 화면은 이 문장을 그대로 보여준다. */
+export interface DealSignal {
+  code: DealSignalCode;
+  label: string;
+  points: number;
+  detail: string;
+}
+
+/**
+ * 급매 레이더의 매물 단위 결과.
+ * 모든 금액은 원, 면적은 ㎡, 할인율은 기준 시세(같은 단지·면적 구간 최근 6개월 중위가) 대비 %다.
+ */
+export interface RadarDeal {
+  dealHash: string;
+  complexId: string;
+  complexName: string;
+  lawdCd: string;
+  sigungu: string;
+  dong: string;
+  households: number;
+  builtYear: number;
+  areaM2: number;
+  areaBand: AreaBandKey;
+  floor: number | null;
+  dealDate: string;
+  dealMonth: string;
+  priceKrw: number;
+  pricePerPyeong: number;
+  /** 같은 단지·면적 구간 최근 6개월 중위 매매가(해당 거래 제외). */
+  medianPriceKrw: number;
+  medianPricePerPyeong: number;
+  /** 기준 시세 표본 수. minReferenceSamples 미만인 거래는 목록에서 빠진다. */
+  referenceSamples: number;
+  /** (거래가 − 기준 시세) ÷ 기준 시세 × 100. 음수면 저평가. */
+  discountPct: number;
+  /** 단지·면적 구간 전세가율(%). 전세 표본이 없으면 null. */
+  jeonseRatioPct: number | null;
+  /** 매매가 − 전세보증금(해당 면적 환산). 계산 불가면 null. */
+  gapKrw: number | null;
+  /** 같은 단지·면적 구간 최근 3개월 거래 건수. */
+  volume3m: number;
+  dealScore: number;
+  grade: DealGrade;
+  signals: DealSignal[];
+  dealType: string;
+  /** 거래 기준월. */
+  asOfMonth: string;
+}
+
+export type AlertChannel = 'kakao_alimtalk' | 'webhook';
+
+/** 사용자가 저장하는 맞춤 알림 규칙. */
+export interface AlertRule {
+  ruleId: string;
+  name: string;
+  lawdCds: string[];
+  minHouseholds: number;
+  areaBand: AreaBandKey | 'all';
+  maxDiscountPct: number;
+  minScore: number;
+  channels: AlertChannel[];
+  createdAt: string;
+  /** 마지막 미리보기에서 규칙에 걸린 매물 수. 서버가 저장 시점 값을 남긴다. */
+  lastMatchedCount?: number;
+}
+
+/** 알림 규칙 생성 입력(ruleId·createdAt은 서버/화면이 채운다). */
+export interface AlertRuleDraft {
+  name: string;
+  lawdCds: string[];
+  minHouseholds?: number;
+  areaBand?: AreaBandKey | 'all';
+  maxDiscountPct?: number;
+  minScore?: number;
+  channels?: AlertChannel[];
+}
+
+/** 카카오 알림톡(SENS)·웹훅 payload 미리보기. 실제 발송은 하지 않는다. */
+export interface AlertPreview {
+  rule: AlertRule;
+  condition: string;
+  matchedCount: number;
+  sample: RadarDeal[];
+  channels: string[];
+  kakao: {
+    channel: 'kakao_alimtalk';
+    provider: string;
+    templateCode: string;
+    templateName: string;
+    recipientType: string;
+    variables: Record<string, string>;
+    message: string;
+    buttons: Array<{ type: string; name: string; linkMobile: string; linkPc: string }>;
+  };
+  webhook: {
+    channel: 'webhook';
+    method: 'POST';
+    url: string;
+    headers: Record<string, string>;
+    body: Record<string, unknown>;
+  };
+  previewOnly: boolean;
+  note: string;
 }
 
 export interface MonthlyPricePoint {

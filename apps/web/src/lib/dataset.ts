@@ -55,6 +55,22 @@ export function seriesForDong(legalDongCode: string | null): MonthlyPricePoint[]
   return series;
 }
 
+/** 구(시군구) 단위 시계열. 개요 차트가 동 단위 16개 선 대신 구 6개 선으로 보여줄 때 쓴다. */
+export function seriesForLawdCd(lawdCd: string | null): MonthlyPricePoint[] {
+  const key = `lawd:${lawdCd ?? '__all__'}`;
+  const cached = seriesCache.get(key);
+  if (cached) return cached;
+  const scoped = lawdCd ? dataset.transactions.filter((row) => row.lawdCd === lawdCd) : dataset.transactions;
+  const series = aggregateMonthly(scoped, MONTHS);
+  seriesCache.set(key, series);
+  return series;
+}
+
+/** 구 선택지(중복 제거). 개요 차트·레이더 머리말이 쓴다. */
+export const DISTRICT_OPTIONS = [...new Map(dataset.regions.map((row) => [row.lawdCd, row])).values()].map(
+  (row) => ({ lawdCd: row.lawdCd, sigungu: row.sigungu }),
+);
+
 export function complexSeries(complexId: string): MonthlyPricePoint[] {
   const key = `complex:${complexId}`;
   const cached = seriesCache.get(key);

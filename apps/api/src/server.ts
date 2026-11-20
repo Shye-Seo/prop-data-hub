@@ -5,6 +5,7 @@ import { registerReferenceRoutes } from './routes/reference';
 import { registerPipelineRoutes } from './routes/pipeline';
 import { registerEventRoutes } from './routes/events';
 import { registerMarketRoutes } from './routes/market';
+import { registerRadarRoutes } from './routes/radar';
 import { routeTable } from './routes/validation';
 import { openApiDocument, openApiHtml } from './openapi';
 
@@ -39,6 +40,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   routeTable(server);
   await registerReferenceRoutes(server, options.store);
   await registerMarketRoutes(server, options.store);
+  await registerRadarRoutes(server, options.store);
   await registerPipelineRoutes(server, options.store);
   await registerEventRoutes(server, options.store);
 

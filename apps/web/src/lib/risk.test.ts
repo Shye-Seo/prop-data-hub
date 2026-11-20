@@ -9,13 +9,21 @@ import {
   overallSummary,
   regionSummary,
 } from './risk';
+import { SAMPLE_COMPLEXES } from '@prop/shared';
 import { dataset } from './dataset';
 
 describe('화면 리스크 레이어', () => {
   it('모든 단지의 리스크 평가와 구별 요약을 만든다', () => {
-    expect(RISK_ASSESSMENTS).toHaveLength(16);
-    expect(REGION_RISK_SUMMARIES).toHaveLength(3);
-    expect(REGION_RISK_SUMMARIES.map((row) => row.sigungu)).toEqual(['남구', '수영구', '해운대구']);
+    expect(RISK_ASSESSMENTS).toHaveLength(SAMPLE_COMPLEXES.length);
+    expect(REGION_RISK_SUMMARIES).toHaveLength(6);
+    expect(REGION_RISK_SUMMARIES.map((row) => row.sigungu)).toEqual([
+      '부산진구',
+      '동래구',
+      '남구',
+      '해운대구',
+      '연제구',
+      '수영구',
+    ]);
     for (const row of REGION_RISK_SUMMARIES) {
       expect(row.complexCount).toBeGreaterThan(0);
       expect(row.medianJeonseRatioPct).toBeGreaterThan(50);
@@ -32,13 +40,13 @@ describe('화면 리스크 레이어', () => {
     expect([...scores].sort((a, b) => b - a)).toEqual(scores);
 
     const all = assessmentsFor(null);
-    expect(all).toHaveLength(16);
+    expect(all).toHaveLength(SAMPLE_COMPLEXES.length);
     expect(all[0]!.score).toBeGreaterThanOrEqual(all[all.length - 1]!.score);
   });
 
   it('전체 요약은 구 요약보다 단지 수가 많다', () => {
     const all = overallSummary();
-    expect(all.complexCount).toBe(16);
+    expect(all.complexCount).toBe(SAMPLE_COMPLEXES.length);
     expect(all.volume12m).toBeGreaterThan(regionSummary('26290')!.volume12m);
     expect(all.anomalyCount).toBeGreaterThanOrEqual(3);
   });

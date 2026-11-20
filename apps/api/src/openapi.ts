@@ -36,7 +36,7 @@ export const openApiHtml = `<!doctype html>
 </head>
 <body>
 <header>
-  <h1>prop-data-hub API <span class="muted" style="color:#8fb3dd">v1.0.0</span></h1>
+  <h1>prop-data-hub API <span class="muted" style="color:#8fb3dd">v1.2.0</span></h1>
   <p>부동산 실거래·거시지표·수집 파이프라인·행동 이벤트 API · 본 문서는 <code style="background:#12305a;color:#cfe0f7">openapi.json</code>을 읽어 렌더링한다.</p>
 </header>
 <main>

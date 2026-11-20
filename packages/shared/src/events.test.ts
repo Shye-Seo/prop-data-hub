@@ -18,12 +18,38 @@ function event(partial: Partial<BehaviorEventInput> & Pick<BehaviorEventInput, '
 }
 
 describe('behaviorEventSchema', () => {
-  it('정의된 9종 이벤트를 모두 허용한다', () => {
+  it('정의된 11종 이벤트를 모두 허용한다', () => {
     const samples: BehaviorEventInput[] = [
       event({ name: 'page_view', props: { route: '/overview', isInitialLoad: true } }),
       event({
         name: 'region_filter_change',
         props: { lawdCd: '26290', dong: '문현동', areaBand: '60to85', periodMonths: 12 },
+      }),
+      event({
+        name: 'radar_filter_change',
+        props: {
+          lawdCds: ['26230', '26290'],
+          minHouseholds: 350,
+          largeComplexOnly: true,
+          areaBand: '60to85',
+          maxDiscountPct: 8,
+          minScore: 40,
+          resultCount: 4,
+        },
+      }),
+      event({
+        name: 'alert_rule_create',
+        props: {
+          ruleId: 'rule_test_01',
+          lawdCds: ['26230'],
+          minHouseholds: 350,
+          areaBand: '60to85',
+          maxDiscountPct: 8,
+          minScore: 40,
+          channels: ['kakao_alimtalk'],
+          matchedCount: 2,
+          source: 'radar_builder',
+        },
       }),
       event({
         name: 'complex_compare_add',
@@ -104,6 +130,32 @@ describe('computeFunnel', () => {
         occurredAt: '2026-11-19T01:01:00.000Z',
       }),
       event({
+        name: 'radar_filter_change',
+        props: {
+          lawdCds: ['26230', '26290'],
+          minHouseholds: 350,
+          largeComplexOnly: true,
+          areaBand: '60to85',
+          maxDiscountPct: 8,
+          minScore: 40,
+          resultCount: 4,
+        },
+      }),
+      event({
+        name: 'alert_rule_create',
+        props: {
+          ruleId: 'rule_test_01',
+          lawdCds: ['26230'],
+          minHouseholds: 350,
+          areaBand: '60to85',
+          maxDiscountPct: 8,
+          minScore: 40,
+          channels: ['kakao_alimtalk'],
+          matchedCount: 2,
+          source: 'radar_builder',
+        },
+      }),
+      event({
         name: 'complex_compare_add',
         props: { complexIds: ['a'], addedComplexId: 'a', compareCount: 1 },
         occurredAt: '2026-11-19T01:02:00.000Z',
@@ -127,6 +179,32 @@ describe('computeFunnel', () => {
   it('중간 단계를 건너뛴 세션은 뒤 단계에 도달하지 않은 것으로 집계한다', () => {
     const events: BehaviorEventInput[] = [
       event({ name: 'page_view', props: { route: '/overview' } }),
+      event({
+        name: 'radar_filter_change',
+        props: {
+          lawdCds: ['26230', '26290'],
+          minHouseholds: 350,
+          largeComplexOnly: true,
+          areaBand: '60to85',
+          maxDiscountPct: 8,
+          minScore: 40,
+          resultCount: 4,
+        },
+      }),
+      event({
+        name: 'alert_rule_create',
+        props: {
+          ruleId: 'rule_test_01',
+          lawdCds: ['26230'],
+          minHouseholds: 350,
+          areaBand: '60to85',
+          maxDiscountPct: 8,
+          minScore: 40,
+          channels: ['kakao_alimtalk'],
+          matchedCount: 2,
+          source: 'radar_builder',
+        },
+      }),
       event({
         name: 'complex_compare_add',
         props: { complexIds: ['a'], addedComplexId: 'a', compareCount: 1 },

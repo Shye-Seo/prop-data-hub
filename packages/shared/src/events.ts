@@ -22,6 +22,28 @@ const regionFilterProps = z.object({
   resultCount: z.number().int().nonnegative().optional(),
 });
 
+const radarFilterProps = z.object({
+  lawdCds: z.array(z.string().regex(/^\d{5}$/)).max(8),
+  minHouseholds: z.number().int().min(0).max(20_000),
+  largeComplexOnly: z.boolean(),
+  areaBand: z.enum(['under60', '60to85', '85to115', 'over115', 'all']),
+  maxDiscountPct: z.number().min(1).max(50),
+  minScore: z.number().int().min(0).max(100).optional(),
+  resultCount: z.number().int().nonnegative(),
+});
+
+const alertRuleProps = z.object({
+  ruleId: z.string().min(1).max(64),
+  lawdCds: z.array(z.string().regex(/^\d{5}$/)).min(1).max(8),
+  minHouseholds: z.number().int().min(0).max(20_000),
+  areaBand: z.enum(['under60', '60to85', '85to115', 'over115', 'all']),
+  maxDiscountPct: z.number().min(1).max(50),
+  minScore: z.number().int().min(0).max(100).optional(),
+  channels: z.array(z.enum(['kakao_alimtalk', 'webhook'])).min(1).max(2),
+  matchedCount: z.number().int().nonnegative(),
+  source: z.enum(['radar_builder', 'api']).optional(),
+});
+
 const complexCompareProps = z.object({
   complexIds: z.array(z.string().min(1).max(64)).min(1).max(3),
   addedComplexId: z.string().min(1).max(64),
@@ -35,7 +57,8 @@ const listingClickProps = z.object({
   dealHash: z.string().max(80).optional(),
   priceKrw: z.number().int().positive(),
   areaM2: z.number().positive().max(500),
-  source: z.enum(['explore_table', 'overview', 'compare', 'risk']),
+  source: z.enum(['explore_table', 'overview', 'compare', 'risk', 'radar']),
+  dealScore: z.number().int().min(0).max(100).optional(),
   jeonseRatioPct: z.number().min(0).max(200).optional(),
 });
 
@@ -79,6 +102,8 @@ const funnelStepProps = z.object({
 export const EVENT_PROP_SCHEMAS = {
   page_view: pageViewProps,
   region_filter_change: regionFilterProps,
+  radar_filter_change: radarFilterProps,
+  alert_rule_create: alertRuleProps,
   complex_compare_add: complexCompareProps,
   listing_click: listingClickProps,
   listing_save: listingSaveProps,
@@ -162,6 +187,26 @@ export const EVENT_CATALOG: EventDefinition[] = [
     trigger: '필터 확정(적용) 시 1회, 같은 세션의 연속 변경은 800ms 디바운스',
     props: ['lawdCd', 'dong', 'complexId', 'previousLawdCd', 'areaBand', 'periodMonths', 'resultCount'],
     kpi: ['지역별 탐색 세션', '조건 변경 후 이탈률', '조회 결과 0건 비율'],
+    retentionDays: 400,
+    owner: '프로덕트 분석',
+  },
+  {
+    name: 'radar_filter_change',
+    label: '레이더 조건 변경',
+    description: '급매 레이더에서 구·세대수·평형·할인율 조건이 바뀐 시점. 알림 규칙으로 이어지는 탐색 수요를 본다.',
+    trigger: '레이더 필터 확정 시 1회, 같은 세션의 연속 변경은 800ms 디바운스',
+    props: ['lawdCds', 'minHouseholds', 'largeComplexOnly', 'areaBand', 'maxDiscountPct', 'minScore', 'resultCount'],
+    kpi: ['레이더 세션', '조건별 결과 0건 비율', '알림 규칙 저장 전환율'],
+    retentionDays: 400,
+    owner: '프로덕트 분석',
+  },
+  {
+    name: 'alert_rule_create',
+    label: '알림 규칙 저장',
+    description: '레이더 조건을 맞춤 알림 규칙으로 저장한 시점. 알림 미리보기(카카오 알림톡·웹훅)와 함께 남긴다.',
+    trigger: '알림 규칙 저장이 성공했을 때 1회(서버 저장 시 수집 API로도 적재)',
+    props: ['ruleId', 'lawdCds', 'minHouseholds', 'areaBand', 'maxDiscountPct', 'minScore', 'channels', 'matchedCount', 'source'],
+    kpi: ['알림 규칙 생성 수', '규칙당 매칭 건수', '채널 선택 비중'],
     retentionDays: 400,
     owner: '프로덕트 분석',
   },

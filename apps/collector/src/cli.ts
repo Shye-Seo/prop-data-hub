@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { SOURCE_CATALOG, SAMPLE_COMPLEXES, SAMPLE_END_MONTH, SAMPLE_REGIONS } from '@prop/shared';
+import { RADAR_SIGUNGU, SOURCE_CATALOG, SAMPLE_COMPLEXES, SAMPLE_END_MONTH, SAMPLE_REGIONS } from '@prop/shared';
 import { HttpClient } from './http';
 import { TokenBucketLimiter } from './rate-limiter';
 import { MemorySink, type IngestionSink } from './sink';
@@ -46,7 +46,8 @@ function parseArgs(argv: string[]): CliOptions {
     live: argv.includes('--live'),
     retryDlq: argv.includes('--retry-dlq'),
     months: Number(getValue('--months') ?? 6),
-    lawdCds: (getValue('--lawdCd') ?? '26290,26500,26350').split(',').map((value) => value.trim()),
+    // 기본값은 레이더 대상 6개 구다. --lawdCd=26230,26290 처럼 좁혀 실행할 수 있다.
+    lawdCds: (getValue('--lawdCd') ?? RADAR_SIGUNGU.map((row) => row.lawdCd).join(',')).split(',').map((value) => value.trim()),
     json: argv.includes('--json'),
     rent: argv.includes('--rent'),
   };

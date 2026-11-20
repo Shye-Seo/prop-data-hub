@@ -65,6 +65,43 @@ describe('runMolitIngestion', () => {
     expect(sink.runs.get(result.run.runId)?.finishedAt).toBe('2026-11-19T02:00:00.000Z');
   });
 
+  it('부산진구·동래구·연제구도 같은 배치로 수집하고 법정동 코드를 채운다', async () => {
+    const sink = new MemorySink();
+    await sink.saveRegions(SAMPLE_REGIONS);
+    const transport = createFixtureTransport();
+    const deps = buildDeps(sink, transport.fetch);
+
+    const result = await runMolitIngestion(
+      {
+        endpoint,
+        serviceKey: 'fixture',
+        regions: SAMPLE_REGIONS,
+        lawdCds: ['26230', '26260', '26470'],
+        endMonth: '2026-09',
+        months: 1,
+        jobType: 'incremental',
+        triggeredBy: 'test',
+        numOfRows: 100,
+      },
+      deps,
+    );
+
+    expect(result.run.status).toBe('succeeded');
+    expect(result.run.taskTotal).toBe(3);
+    expect(result.dealCount).toBeGreaterThan(0);
+    const lawdCodes = new Set([...sink.transactions.values()].map((row) => row.lawdCd));
+    expect(lawdCodes).toEqual(new Set(['26230', '26260', '26470']));
+    const byLawd = new Map<string, Set<string>>();
+    for (const row of sink.transactions.values()) {
+      const set = byLawd.get(row.lawdCd) ?? new Set<string>();
+      set.add(row.legalDongCode);
+      byLawd.set(row.lawdCd, set);
+    }
+    expect([...byLawd.get('26230') ?? []].every((code) => code.startsWith('26230'))).toBe(true);
+    expect([...byLawd.get('26260') ?? []].every((code) => code.startsWith('26260'))).toBe(true);
+    expect([...byLawd.get('26470') ?? []].every((code) => code.startsWith('26470'))).toBe(true);
+  });
+
   it('같은 기간을 다시 수집하면 신규 없이 갱신만 한다(멱등)', async () => {
     const sink = new MemorySink();
     const transport = createFixtureTransport();

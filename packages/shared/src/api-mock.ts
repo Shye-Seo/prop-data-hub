@@ -1,6 +1,19 @@
 import { SAMPLE_END_MONTH, SAMPLE_MONTHS, buildSampleDataset, type SampleDataset } from './fixtures/sample-dataset';
 import { aggregateMonthly, latestMacroValue, recentMonths } from './metrics';
 import { aggregateRatioSeries, jeonseRatioSeries } from './risk';
+import {
+  DEAL_SCORE_SUMMARY,
+  buildAlertPreview,
+  buildRadarDealSet,
+  describeAlertRule,
+  filterRadarDeals,
+  normalizeAlertRule,
+  paginateRadarDeals,
+  radarSummary,
+  type RadarDealSet,
+  type RadarFilter,
+} from './radar';
+import type { AlertRuleDraft, AreaBandKey } from './types';
 
 /**
  * 라이브 데모(GitHub Pages)용 API 예시 응답.
@@ -24,6 +37,38 @@ export interface MockResponse {
 }
 
 const MOCK_NOTE = '데모 응답: 서버를 호출하지 않고 같은 표본 데이터와 집계 함수로 계산했습니다.';
+
+/** 레이더 표본 계산은 비용이 있어 데이터셋당 한 번만 만든다. */
+const radarCache = new WeakMap<SampleDataset, RadarDealSet>();
+
+function radarDealSet(dataset: SampleDataset): RadarDealSet {
+  const cached = radarCache.get(dataset);
+  if (cached) return cached;
+  const set = buildRadarDealSet({
+    transactions: dataset.transactions,
+    rents: dataset.rentTransactions,
+    complexes: dataset.complexes,
+    regions: dataset.regions,
+    months: recentMonths(SAMPLE_END_MONTH, SAMPLE_MONTHS),
+  });
+  radarCache.set(dataset, set);
+  return set;
+}
+
+function truthy(value: string | undefined): boolean {
+  return value === 'true' || value === '1';
+}
+
+function radarFilterFromParams(params: Record<string, string>): RadarFilter {
+  const areaBand = (params.areaBand ?? 'all') as AreaBandKey | 'all';
+  return {
+    lawdCds: params.lawdCds ? params.lawdCds.split(',').map((code) => code.trim()).filter(Boolean) : undefined,
+    minHouseholds: params.minHouseholds !== undefined ? Number(params.minHouseholds) : undefined,
+    areaBand,
+    maxDiscountPct: params.maxDiscountPct !== undefined ? Number(params.maxDiscountPct) : undefined,
+    minScore: params.minScore !== undefined ? Number(params.minScore) : undefined,
+  };
+}
 
 export function mockApiResponse(request: MockRequest, dataset: SampleDataset = buildSampleDataset()): MockResponse {
   const method = request.method ?? 'get';
@@ -155,6 +200,66 @@ export function mockApiResponse(request: MockRequest, dataset: SampleDataset = b
 
   if (path === '/api/v1/pipeline/dlq') {
     return respond(path, 200, { items: dataset.deadLetters, count: dataset.deadLetters.length });
+  }
+
+  if (path === '/api/v1/radar/deals') {
+    const set = radarDealSet(dataset);
+    const filter = radarFilterFromParams(params);
+    const effectiveFilter = truthy(params.includeBelowThreshold) ? { ...filter, minHouseholds: 0 } : filter;
+    const filtered = filterRadarDeals(set.deals, effectiveFilter);
+    const limit = Math.min(Number(params.limit ?? 5), 50);
+    const offset = Number(params.offset ?? 0);
+    return respond(path, 200, {
+      items: paginateRadarDeals(filtered, limit, offset),
+      total: filtered.length,
+      limit,
+      offset,
+      asOfMonth: set.asOfMonth,
+      filter: {
+        lawdCds: filter.lawdCds ?? [],
+        minHouseholds: effectiveFilter.minHouseholds ?? 350,
+        areaBand: filter.areaBand ?? 'all',
+        maxDiscountPct: filter.maxDiscountPct ?? 8,
+        minScore: filter.minScore ?? 0,
+      },
+      summary: radarSummary(filtered),
+      universe: set.universe,
+      scoreWeights: DEAL_SCORE_SUMMARY,
+      definition: '할인율 = (거래가 − 같은 단지·면적 구간 최근 6개월 중위가) ÷ 중위가 × 100',
+    });
+  }
+
+  if (path === '/api/v1/radar/alert-rules' && method === 'get') {
+    return respond(path, 200, {
+      items: [],
+      count: 0,
+      hint: '데모에서는 저장한 규칙이 브라우저(localStorage)에 남습니다. 서버 모드에서는 alert_rules 테이블을 조회합니다.',
+    });
+  }
+
+  if (path === '/api/v1/radar/alert-rules' && method === 'post') {
+    const body = (request.body ?? {}) as Partial<AlertRuleDraft>;
+    if (!body.name || !body.lawdCds || body.lawdCds.length === 0) {
+      return respond(path, 400, {
+        error: 'validation_error',
+        issues: [
+          ...(body.name ? [] : [{ path: 'name', message: '이름을 입력해야 합니다' }]),
+          ...(body.lawdCds && body.lawdCds.length > 0 ? [] : [{ path: 'lawdCds', message: '지역을 하나 이상 선택해야 합니다' }]),
+        ],
+      });
+    }
+    const rule = normalizeAlertRule(
+      { ...body, name: body.name, lawdCds: body.lawdCds },
+      { ruleId: 'rule_demo_01', createdAt: '2026-11-20T06:00:00.000Z' },
+    );
+    const preview = buildAlertPreview(rule, radarDealSet(dataset).deals, { now: '2026-11-20T06:00:00.000Z' });
+    return respond(path, 201, {
+      rule,
+      preview,
+      condition: describeAlertRule(rule),
+      saved: false,
+      event: { recorded: false, reason: 'demo' },
+    });
   }
 
   if (path === '/api/v1/events' && method === 'post') {

@@ -1,11 +1,13 @@
 import {
   aggregateMonthly,
   aggregateRatioSeries,
+  buildRadarDealSet,
   buildSampleDataset,
   isCountableTransaction,
   jeonseRatioSeries,
   recentMonths,
   shiftMonth,
+  type AlertRule,
   type ApartmentComplex,
   type AptRentTransaction,
   type AptTransaction,
@@ -15,6 +17,7 @@ import {
   type MonthlyPricePoint,
   type PipelineRun,
   type PipelineRunTask,
+  type RadarDealSet,
   type Region,
   type SourceDescriptor,
 } from '@prop/shared';
@@ -24,6 +27,7 @@ import type {
   EventStats,
   JeonseRatioRow,
   RentFilter,
+  RadarScope,
   RentPage,
   Store,
   TransactionFilter,
@@ -45,6 +49,8 @@ export class MemoryStore implements Store {
   private readonly deadLetters: DeadLetterEntry[];
   private readonly events: BehaviorEventRecord[] = [];
   private readonly eventIds = new Set<string>();
+  private readonly alertRules = new Map<string, AlertRule>();
+  private radarCache = new Map<string, RadarDealSet>();
 
   constructor(seed = buildSampleDataset()) {
     this.transactions = [...seed.transactions];
@@ -191,6 +197,47 @@ export class MemoryStore implements Store {
 
   async listDeadLetters(): Promise<DeadLetterEntry[]> {
     return [...this.deadLetters].sort((a, b) => a.nextRetryAt.localeCompare(b.nextRetryAt));
+  }
+
+  /**
+   * 레이더 표본. 인메모리에서는 샘플 데이터 전체로 계산하고, 같은 범위(scope)는 결과를 재사용한다.
+   * 필터·정렬은 호출 쪽이 shared.filterRadarDeals로 적용하므로 여기서는 점수 계산까지만 한다.
+   */
+  async radarDealSet(scope: RadarScope): Promise<RadarDealSet> {
+    const key = `${(scope.lawdCds ?? []).join(',')}|${scope.referenceMonths}|${scope.lookbackMonths}|${scope.ratioMonths}`;
+    const cached = this.radarCache.get(key);
+    if (cached) return cached;
+
+    const latest = this.transactions
+      .filter(isCountableTransaction)
+      .map((row) => row.dealMonth)
+      .sort()
+      .at(-1) ?? shiftMonth(new Date().toISOString().slice(0, 7), -1);
+    const months = recentMonths(latest, scope.ratioMonths);
+    const lawdSet = scope.lawdCds && scope.lawdCds.length > 0 ? new Set(scope.lawdCds) : null;
+
+    const set = buildRadarDealSet({
+      transactions: this.transactions.filter((row) => (lawdSet ? lawdSet.has(row.lawdCd) : true)),
+      rents: this.rentTransactions.filter((row) => (lawdSet ? lawdSet.has(row.lawdCd) : true)),
+      complexes: this.complexes.filter((row) => (lawdSet ? lawdSet.has(row.lawdCd) : true)),
+      regions: this.regions,
+      months,
+      referenceMonths: scope.referenceMonths,
+      lookbackMonths: scope.lookbackMonths,
+    });
+    if (this.radarCache.size > 8) this.radarCache.clear();
+    this.radarCache.set(key, set);
+    return set;
+  }
+
+  async createAlertRule(rule: AlertRule, lastMatchedCount: number): Promise<AlertRule> {
+    const record = { ...rule, lastMatchedCount };
+    this.alertRules.set(rule.ruleId, record);
+    return record;
+  }
+
+  async listAlertRules(): Promise<AlertRule[]> {
+    return [...this.alertRules.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   async insertBehaviorEvents(records: BehaviorEventRecord[]): Promise<EventInsertResult> {

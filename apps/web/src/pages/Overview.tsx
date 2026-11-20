@@ -2,18 +2,19 @@ import { useMemo, useState } from 'react';
 import { FUNNEL_STEPS } from '@prop/shared';
 import { Card, Kpi, StatusBadge, DataNote } from '../components/ui';
 import { BarChart, LineChart, Sparkline } from '../components/charts';
-import { MONTHS, REGION_OPTIONS, latestMacro, regionKpi, seriesForDong, dataset } from '../lib/dataset';
+import { DISTRICT_OPTIONS, MONTHS, REGION_OPTIONS, latestMacro, regionKpi, seriesForDong, seriesForLawdCd, dataset } from '../lib/dataset';
 import { formatKrwKorean, formatMonth, formatPct, formatPyeongPrice } from '../lib/format';
 import { tracker } from '../lib/tracker';
 import type { RouteKey } from '../lib/router';
 
-const REGION_COLORS: Record<string, string> = {
-  '2629051000': '#0f766e',
-  '2629052000': '#1d4ed8',
-  '2650051000': '#7c3aed',
-  '2650052000': '#be185d',
-  '2650055000': '#0e7490',
-  '2635054000': '#b45309',
+/** 구 단위 선 색. 차트에서 한 눈에 구를 구분하도록 고정한다. */
+const DISTRICT_COLORS: Record<string, string> = {
+  '26230': '#0f766e',
+  '26260': '#1d4ed8',
+  '26290': '#7c3aed',
+  '26350': '#b45309',
+  '26470': '#be185d',
+  '26500': '#0e7490',
 };
 
 export default function Overview({ navigate }: { navigate: (route: RouteKey) => void }) {
@@ -27,16 +28,17 @@ export default function Overview({ navigate }: { navigate: (route: RouteKey) => 
         {
           key: selected,
           label: `${region?.dong ?? ''} 중위 매매가`,
-          color: REGION_COLORS[selected] ?? '#0f766e',
+          color: DISTRICT_COLORS[REGION_OPTIONS.find((row) => row.legalDongCode === selected)?.lawdCd ?? ''] ?? '#0f766e',
           points: seriesForDong(selected).map((row) => ({ label: row.month, value: row.medianPriceKrw })),
         },
       ];
     }
-    return REGION_OPTIONS.map((region) => ({
-      key: region.legalDongCode,
-      label: region.dong,
-      color: REGION_COLORS[region.legalDongCode] ?? '#0f766e',
-      points: seriesForDong(region.legalDongCode).map((row) => ({ label: row.month, value: row.medianPriceKrw })),
+    // 전체 보기에서는 동 16개가 아니라 구 6개 선으로 묶어 보여준다.
+    return DISTRICT_OPTIONS.map((district) => ({
+      key: district.lawdCd,
+      label: district.sigungu,
+      color: DISTRICT_COLORS[district.lawdCd] ?? '#0f766e',
+      points: seriesForLawdCd(district.lawdCd).map((row) => ({ label: row.month, value: row.medianPriceKrw })),
     }));
   }, [selected]);
 
@@ -95,6 +97,9 @@ export default function Overview({ navigate }: { navigate: (route: RouteKey) => 
           표본 {dataset.transactions.filter((row) => !row.canceled).length.toLocaleString('ko-KR')}건 · 24개월
           <button type="button" className="ml-2 font-semibold text-teal-700" onClick={() => navigate('risk')}>
             구별 리스크 →
+          </button>
+          <button type="button" className="ml-2 font-semibold text-teal-700" onClick={() => navigate('radar')}>
+            급매 레이더 →
           </button>
         </span>
       </div>

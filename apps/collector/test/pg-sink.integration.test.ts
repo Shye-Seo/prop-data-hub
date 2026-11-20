@@ -31,7 +31,7 @@ describe('PgSink (PGlite)', () => {
       {
         complexId: 'MOLIT-26290-001',
         name: '문현베스티움',
-        legalDongCode: '2629051000',
+        legalDongCode: '2629010900',
         lawdCd: '26290',
         builtYear: 2019,
         households: 743,
@@ -46,7 +46,7 @@ describe('PgSink (PGlite)', () => {
 
   it('지역·단지를 업서트한다', async () => {
     const regions = await db.query<{ count: string }>('SELECT count(*)::text AS count FROM regions');
-    expect(Number(regions.rows[0]?.count)).toBe(6);
+    expect(Number(regions.rows[0]?.count)).toBe(SAMPLE_REGIONS.length);
     const complexes = await db.query<{ count: string }>('SELECT count(*)::text AS count FROM apartment_complexes');
     expect(Number(complexes.rows[0]?.count)).toBe(1);
   });

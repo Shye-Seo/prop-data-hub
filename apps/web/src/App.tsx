@@ -6,6 +6,7 @@ import Overview from './pages/Overview';
 import Explore from './pages/Explore';
 import Compare from './pages/Compare';
 import RegionRisk from './pages/RegionRisk';
+import Radar from './pages/Radar';
 import RateLab from './pages/RateLab';
 import Pipeline from './pages/Pipeline';
 import Events from './pages/Events';
@@ -14,10 +15,11 @@ import Dictionary from './pages/Dictionary';
 import EventInspector from './components/EventInspector';
 
 const ROUTE_TITLES: Record<RouteKey, { title: string; description: string }> = {
-  overview: { title: '시장 개요', description: '부산 남구·수영구·해운대구 실거래와 금리 지표를 한 화면에서 봅니다.' },
+  overview: { title: '시장 개요', description: '부산 6개 구(부산진·동래·남·해운대·연제·수영) 실거래와 금리 지표를 한 화면에서 봅니다.' },
   explore: { title: '실거래 탐색', description: '지역·단지·면적·기간으로 실거래를 좁히고 평당가를 비교합니다.' },
   compare: { title: '단지 비교', description: '최대 3개 단지의 가격 추이·전세가율·리스크를 같은 축에서 비교합니다.' },
-  risk: { title: '구별 리스크', description: '전세가율·급락·이상 거래로 남구·수영구·해운대구를 비교합니다.' },
+  risk: { title: '구별 리스크', description: '전세가율·급락·이상 거래로 부산 6개 구를 비교합니다.' },
+  radar: { title: '급매 레이더', description: '350세대 이상 단지의 매매가를 최근 중위가와 비교해 급매·저평가만 모읍니다.' },
   rate: { title: '금리 민감도', description: '대출 조건을 바꾸며 월 상환액과 필요 소득(DSR)을 계산합니다.' },
   pipeline: { title: '수집 파이프라인', description: '공공데이터 수집 실행, 실패 재시도, 데이터 기준일을 확인합니다.' },
   events: { title: '행동 이벤트', description: '이 화면에서 발생한 이벤트와 퍼널 전환을 실시간으로 봅니다.' },
@@ -140,6 +142,7 @@ export default function App() {
           {route === 'explore' && <Explore />}
           {route === 'compare' && <Compare />}
           {route === 'risk' && <RegionRisk />}
+          {route === 'radar' && <Radar />}
           {route === 'rate' && <RateLab />}
           {route === 'pipeline' && <Pipeline />}
           {route === 'events' && <Events />}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SAMPLE_COMPLEXES } from '@prop/shared';
 import {
   ALL_COMPLEX_STATS,
   MONTHS,
@@ -10,9 +11,10 @@ import {
 } from './dataset';
 
 describe('화면 데이터 레이어', () => {
-  it('지역 6곳과 단지 16개를 준비한다', () => {
-    expect(REGION_OPTIONS).toHaveLength(6);
-    expect(ALL_COMPLEX_STATS).toHaveLength(16);
+  it('부산 6개 구의 법정동 16곳과 전체 단지를 준비한다', () => {
+    expect(REGION_OPTIONS).toHaveLength(16);
+    expect(new Set(REGION_OPTIONS.map((row) => row.lawdCd)).size).toBe(6);
+    expect(ALL_COMPLEX_STATS).toHaveLength(SAMPLE_COMPLEXES.length);
     expect(MONTHS).toHaveLength(24);
     expect(MONTHS[23]).toBe('2026-09');
   });
@@ -27,7 +29,7 @@ describe('화면 데이터 레이어', () => {
   });
 
   it('지역 KPI가 표본·중위가·평당가·전년 대비를 계산한다', () => {
-    const kpi = regionKpi('2629051000');
+    const kpi = regionKpi('2629010900');
     expect(kpi.transactionCount).toBeGreaterThan(0);
     expect(kpi.medianPriceKrw).toBeGreaterThan(0);
     expect(kpi.medianPricePerPyeong).toBeGreaterThan(0);
@@ -37,7 +39,7 @@ describe('화면 데이터 레이어', () => {
 
   it('전체 지역 KPI는 개별 지역보다 표본이 많다', () => {
     const all = regionKpi(null);
-    const one = regionKpi('2629051000');
+    const one = regionKpi('2629010900');
     expect(all.transactionCount).toBeGreaterThan(one.transactionCount);
   });
 

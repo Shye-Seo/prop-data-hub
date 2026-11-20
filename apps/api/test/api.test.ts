@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../src/server';
 import { MemoryStore } from '../src/store/memory-store';
 import { openApiDocument } from '../src/openapi';
+import { SAMPLE_COMPLEXES } from '@prop/shared';
 
 const SESSION = 'session-api-test-0001';
 const USER = 'user-api-test-0001';
@@ -43,31 +44,31 @@ describe('API', () => {
   it('지역·단지 기준정보를 반환한다', async () => {
     const regions = await server.inject({ method: 'GET', url: '/api/v1/regions' });
     expect(regions.statusCode).toBe(200);
-    expect(regions.json().count).toBe(6);
+    expect(regions.json().count).toBe(16);
 
     const complexes = await server.inject({ method: 'GET', url: '/api/v1/complexes' });
     expect(complexes.statusCode).toBe(200);
-    expect(complexes.json().count).toBe(16);
+    expect(complexes.json().count).toBe(SAMPLE_COMPLEXES.length);
   });
 
   it('실거래를 지역·기간·면적으로 필터링하고 페이지를 나눈다', async () => {
     const response = await server.inject({
       method: 'GET',
-      url: '/api/v1/transactions?legalDongCode=2629051000&fromMonth=2026-01&toMonth=2026-09&limit=5&offset=0',
+      url: '/api/v1/transactions?legalDongCode=2629010900&fromMonth=2026-01&toMonth=2026-09&limit=5&offset=0',
     });
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body.items).toHaveLength(5);
     expect(body.total).toBeGreaterThan(5);
     for (const item of body.items) {
-      expect(item.legalDongCode).toBe('2629051000');
+      expect(item.legalDongCode).toBe('2629010900');
       expect(item.dealMonth >= '2026-01' && item.dealMonth <= '2026-09').toBe(true);
       expect(item.canceled).toBe(false);
     }
 
     const second = await server.inject({
       method: 'GET',
-      url: '/api/v1/transactions?legalDongCode=2629051000&fromMonth=2026-01&toMonth=2026-09&limit=5&offset=5',
+      url: '/api/v1/transactions?legalDongCode=2629010900&fromMonth=2026-01&toMonth=2026-09&limit=5&offset=5',
     });
     expect(second.json().items[0].dealHash).not.toBe(body.items[0].dealHash);
   });
@@ -97,7 +98,7 @@ describe('API', () => {
   it('월별 시계열을 24개월로 채우고 빈 달은 0으로 둔다', async () => {
     const response = await server.inject({
       method: 'GET',
-      url: '/api/v1/transactions/monthly?legalDongCode=2629051000&months=24',
+      url: '/api/v1/transactions/monthly?legalDongCode=2629010900&months=24',
     });
     expect(response.statusCode).toBe(200);
     const body = response.json();
@@ -244,13 +245,131 @@ describe('API', () => {
     expect(Object.keys(document.paths)).toEqual(
       expect.arrayContaining(['/api/v1/transactions', '/api/v1/events', '/api/v1/rents', '/api/v1/market/jeonse-ratio']),
     );
-    expect(openApiDocument.components.schemas.BehaviorEvent.properties.name.enum).toHaveLength(9);
+    expect(openApiDocument.components.schemas.BehaviorEvent.properties.name.enum).toHaveLength(11);
 
     const html = await server.inject({ method: 'GET', url: '/api-docs' });
     expect(html.statusCode).toBe(200);
     expect(html.headers['content-type']).toContain('text/html');
     expect(html.body).not.toMatch(/https?:\/\/cdn/);
     expect(html.body).toContain('openapi.json');
+  });
+
+  it('레이더 기본 조건(350세대 이상·-8% 이하)으로 매물과 점수를 반환한다', async () => {
+    const response = await server.inject({ method: 'GET', url: '/api/v1/radar/deals?limit=5' });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.items.length).toBeGreaterThan(0);
+    expect(body.items.length).toBeLessThanOrEqual(5);
+    expect(body.total).toBeGreaterThanOrEqual(body.items.length);
+    expect(body.asOfMonth).toBe('2026-09');
+    expect(body.filter.minHouseholds).toBe(350);
+    expect(body.filter.maxDiscountPct).toBe(8);
+    expect(body.summary.count).toBe(body.total);
+    expect(body.universe.largeComplexes).toBeGreaterThan(0);
+    for (const item of body.items) {
+      expect(item.households).toBeGreaterThanOrEqual(350);
+      expect(item.discountPct).toBeLessThanOrEqual(-8);
+      expect(item.dealScore).toBeGreaterThanOrEqual(0);
+      expect(item.dealScore).toBeLessThanOrEqual(100);
+      expect(item.medianPriceKrw).toBeGreaterThan(0);
+      expect(item.signals.length).toBeGreaterThan(0);
+    }
+    // 점수 내림차순 정렬
+    const scores = body.items.map((item: { dealScore: number }) => item.dealScore);
+    expect([...scores].sort((a: number, b: number) => b - a)).toEqual(scores);
+  });
+
+  it('레이더 세대수·구·평형·할인율 필터가 각각 동작한다', async () => {
+    const all = await server.inject({ method: 'GET', url: '/api/v1/radar/deals?limit=200&minHouseholds=0' });
+    const items = all.json().items as Array<{ households: number; lawdCd: string; areaBand: string; discountPct: number; complexName: string }>;
+    expect(items.some((item) => item.households < 350)).toBe(true);
+    expect(new Set(items.map((item) => item.lawdCd)).size).toBeGreaterThanOrEqual(6);
+
+    const lawd = await server.inject({ method: 'GET', url: '/api/v1/radar/deals?lawdCds=26230,26290&limit=200' });
+    expect(lawd.statusCode).toBe(200);
+    for (const item of lawd.json().items) expect(['26230', '26290']).toContain(item.lawdCd);
+
+    const area = await server.inject({ method: 'GET', url: '/api/v1/radar/deals?areaBand=85to115&limit=200' });
+    for (const item of area.json().items) expect(item.areaBand).toBe('85to115');
+
+    const deep = await server.inject({ method: 'GET', url: '/api/v1/radar/deals?maxDiscountPct=15&limit=200' });
+    for (const item of deep.json().items) expect(item.discountPct).toBeLessThanOrEqual(-15);
+    expect(deep.json().total).toBeLessThanOrEqual(all.json().total);
+  });
+
+  it('레이더 파라미터가 잘못되면 400을 낸다', async () => {
+    const badLawd = await server.inject({ method: 'GET', url: '/api/v1/radar/deals?lawdCds=2623' });
+    expect(badLawd.statusCode).toBe(400);
+    expect(badLawd.json().issues[0].path).toBe('lawdCds');
+
+    const badBand = await server.inject({ method: 'GET', url: '/api/v1/radar/deals?areaBand=all-in' });
+    expect(badBand.statusCode).toBe(400);
+
+    const badDiscount = await server.inject({ method: 'GET', url: '/api/v1/radar/deals?maxDiscountPct=80' });
+    expect(badDiscount.statusCode).toBe(400);
+  });
+
+  it('알림 규칙을 저장하고 미리보기·행동 이벤트를 함께 남긴다', async () => {
+    const payload = {
+      name: '부산진구·남구 84㎡ 급매',
+      lawdCds: ['26230', '26290'],
+      minHouseholds: 350,
+      areaBand: '60to85',
+      maxDiscountPct: 8,
+      minScore: 40,
+      channels: ['kakao_alimtalk', 'webhook'],
+      sessionId: 'session-radar-0001',
+      userPseudoId: 'user-radar-0001',
+    };
+    const created = await server.inject({ method: 'POST', url: '/api/v1/radar/alert-rules', payload });
+    expect(created.statusCode).toBe(201);
+    const body = created.json();
+    expect(body.saved).toBe(true);
+    expect(body.rule.ruleId).toMatch(/^rule_/);
+    expect(body.rule.lastMatchedCount).toBe(body.preview.matchedCount);
+    expect(body.preview.kakao.templateCode).toBe('PROP_RADAR_DEAL_01');
+    expect(body.preview.webhook.body.type).toBe('radar.deal.matched');
+    expect(body.event.recorded).toBe(true);
+    for (const deal of body.preview.sample) {
+      expect(['26230', '26290']).toContain(deal.lawdCd);
+      expect(deal.households).toBeGreaterThanOrEqual(350);
+      expect(deal.areaBand).toBe('60to85');
+      expect(deal.discountPct).toBeLessThanOrEqual(-8);
+    }
+
+    const stored = await server.inject({ method: 'GET', url: '/api/v1/radar/alert-rules' });
+    expect(stored.statusCode).toBe(200);
+    expect(stored.json().count).toBe(1);
+    expect(stored.json().items[0].ruleId).toBe(body.rule.ruleId);
+
+    const events = await server.inject({ method: 'GET', url: '/api/v1/events?name=alert_rule_create' });
+    expect(events.json().total).toBe(1);
+    expect(events.json().items[0].props.ruleId).toBe(body.rule.ruleId);
+    expect(events.json().items[0].props.matchedCount).toBe(body.preview.matchedCount);
+  });
+
+  it('알림 규칙 본문이 잘못되면 400을 낸다', async () => {
+    const noName = await server.inject({
+      method: 'POST',
+      url: '/api/v1/radar/alert-rules',
+      payload: { lawdCds: ['26230'] },
+    });
+    expect(noName.statusCode).toBe(400);
+    expect(noName.json().issues[0].path).toBe('name');
+
+    const noRegion = await server.inject({
+      method: 'POST',
+      url: '/api/v1/radar/alert-rules',
+      payload: { name: '지역 없음', lawdCds: [] },
+    });
+    expect(noRegion.statusCode).toBe(400);
+
+    const badChannel = await server.inject({
+      method: 'POST',
+      url: '/api/v1/radar/alert-rules',
+      payload: { name: '채널 오류', lawdCds: ['26230'], channels: ['sms'] },
+    });
+    expect(badChannel.statusCode).toBe(400);
   });
 
   it('정의되지 않은 경로는 JSON 404를 낸다', async () => {

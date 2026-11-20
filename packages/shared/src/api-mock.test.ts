@@ -49,6 +49,8 @@ describe('OpenAPI 명세', () => {
     expect(schema.properties.name.enum).toEqual([
       'page_view',
       'region_filter_change',
+      'radar_filter_change',
+      'alert_rule_create',
       'complex_compare_add',
       'listing_click',
       'listing_save',

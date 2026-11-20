@@ -28,6 +28,7 @@ const TAG_LABEL: Record<string, string> = {
   reference: '기준정보',
   transactions: '실거래',
   market: '전월세·전세가율',
+  radar: '급매 레이더',
   macro: '거시지표',
   pipeline: '수집 파이프라인',
   events: '행동 이벤트',

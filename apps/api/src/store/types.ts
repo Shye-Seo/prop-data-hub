@@ -1,4 +1,5 @@
 import type {
+  AlertRule,
   ApartmentComplex,
   AptRentTransaction,
   AptTransaction,
@@ -8,6 +9,7 @@ import type {
   MonthlyPricePoint,
   PipelineRun,
   PipelineRunTask,
+  RadarDealSet,
   Region,
   SourceDescriptor,
 } from '@prop/shared';
@@ -75,6 +77,16 @@ export interface EventStats {
   lastReceivedAt: string | null;
 }
 
+/** 레이더 표본을 만들 범위. 필터·정렬은 shared의 filterRadarDeals가 담당한다. */
+export interface RadarScope {
+  lawdCds?: string[];
+  referenceMonths: number;
+  /** 후보 거래를 볼 최근 개월 수. */
+  lookbackMonths: number;
+  /** 전세가율 계산 개월 수. */
+  ratioMonths: number;
+}
+
 export interface EventInsertResult {
   inserted: number;
   duplicates: number;
@@ -95,6 +107,10 @@ export interface Store {
   getPipelineRun(runId: string): Promise<PipelineRun | null>;
   listRunTasks(runId: string): Promise<PipelineRunTask[]>;
   listDeadLetters(): Promise<DeadLetterEntry[]>;
+  /** 급매 레이더 표본(점수 계산 완료). 조건 필터·페이지는 라우트에서 shared 함수로 적용한다. */
+  radarDealSet(scope: RadarScope): Promise<RadarDealSet>;
+  createAlertRule(rule: AlertRule, lastMatchedCount: number): Promise<AlertRule>;
+  listAlertRules(): Promise<AlertRule[]>;
   insertBehaviorEvents(records: BehaviorEventRecord[]): Promise<EventInsertResult>;
   listBehaviorEvents(filter: EventFilter): Promise<{ rows: BehaviorEventRecord[]; total: number }>;
   eventStats(sinceIso: string): Promise<EventStats>;

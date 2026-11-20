@@ -32,7 +32,7 @@ describe('collectMolitMonth', () => {
     expect(result.pagesFetched).toBeGreaterThan(1);
     expect(result.transactions).toHaveLength(expected.length);
     expect(new Set(result.transactions.map((row) => row.dealHash)).size).toBe(expected.length);
-    expect(result.transactions.every((row) => row.legalDongCode.startsWith('262905'))).toBe(true);
+    expect(result.transactions.every((row) => row.legalDongCode.startsWith('26290'))).toBe(true);
     expect(result.transactions.every((row) => row.asOfDate === '2026-09-01')).toBe(true);
   });
 
@@ -83,8 +83,8 @@ describe('collectMolitMonth', () => {
   });
 
   it('법정동명으로 10자리 코드를 찾는다', () => {
-    expect(resolveRegion(SAMPLE_REGIONS, '26290', '문현동')?.legalDongCode).toBe('2629051000');
-    expect(resolveRegion(SAMPLE_REGIONS, '26290', '대연동')?.legalDongCode).toBe('2629052000');
+    expect(resolveRegion(SAMPLE_REGIONS, '26290', '문현동')?.legalDongCode).toBe('2629010900');
+    expect(resolveRegion(SAMPLE_REGIONS, '26290', '대연동')?.legalDongCode).toBe('2629010600');
     expect(resolveRegion(SAMPLE_REGIONS, '99999', '문현동')).toBeUndefined();
   });
 });

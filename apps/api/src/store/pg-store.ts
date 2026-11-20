@@ -1,7 +1,10 @@
 import {
   aggregateMonthly,
+  buildRadarDealSet,
   recentMonths,
   shiftMonth,
+  type AlertChannel,
+  type AlertRule,
   type ApartmentComplex,
   type AptRentTransaction,
   type AptTransaction,
@@ -9,9 +12,11 @@ import {
   type DeadLetterEntry,
   type MacroIndicator,
   type MonthlyPricePoint,
+  type AreaBandKey,
   type PipelineRun,
   type PipelineRunStatus,
   type PipelineRunTask,
+  type RadarDealSet,
   type Region,
   type SourceDescriptor,
 } from '@prop/shared';
@@ -21,6 +26,7 @@ import type {
   EventStats,
   JeonseRatioRow,
   RentFilter,
+  RadarScope,
   RentPage,
   Store,
   TransactionFilter,
@@ -137,6 +143,41 @@ function mapRent(row: RentRow): AptRentTransaction {
     asOfDate: toIsoDate(row.as_of_date),
     collectedAt: toIsoTimestamp(row.collected_at),
     sourceNote: row.source_note,
+  };
+}
+
+interface AlertRuleRow {
+  rule_id: string;
+  name: string;
+  lawd_cds: string[] | string;
+  min_households: string | number;
+  area_band: string;
+  max_discount_pct: string | number;
+  min_score: string | number;
+  channels: string[] | string;
+  last_matched_count: string | number;
+  created_at: string | Date;
+}
+
+function toStringArray(value: string[] | string | null): string[] {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  // pg는 text[]를 배열로 주지만, 드라이버에 따라 '{a,b}' 문자열로 올 수 있어 둘 다 처리한다.
+  return value.replace(/^\{|\}$/g, '').split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function mapAlertRule(row: AlertRuleRow): AlertRule {
+  return {
+    ruleId: row.rule_id,
+    name: row.name,
+    lawdCds: toStringArray(row.lawd_cds),
+    minHouseholds: Number(row.min_households),
+    areaBand: row.area_band as AreaBandKey | 'all',
+    maxDiscountPct: Number(row.max_discount_pct),
+    minScore: Number(row.min_score),
+    channels: toStringArray(row.channels) as AlertChannel[],
+    lastMatchedCount: Number(row.last_matched_count),
+    createdAt: toIsoTimestamp(row.created_at),
   };
 }
 
@@ -572,6 +613,100 @@ export class PgStore implements Store {
       nextRetryAt: toIsoTimestamp(row.next_retry_at),
       resolvedAt: row.resolved_at ? toIsoTimestamp(row.resolved_at) : null,
     }));
+  }
+
+  /**
+   * 레이더 표본. 후보(최근 lookbackMonths+기준시세 개월)와 전세 계약만 읽어 shared 계산에 넘긴다.
+   * 점수·정렬 규칙을 한 곳(shared/radar.ts)에 두기 위해 SQL은 범위 축소만 담당한다.
+   */
+  async radarDealSet(scope: RadarScope): Promise<RadarDealSet> {
+    const lawdCds = scope.lawdCds && scope.lawdCds.length > 0 ? scope.lawdCds : null;
+    const scopeSql = lawdCds ? 'AND lawd_cd = ANY($1::text[])' : '';
+    const scopeParams = lawdCds ? [lawdCds] : [];
+
+    const { rows: latestRows } = await this.db.query<{ latest: string | null }>(
+      `SELECT max(deal_month) AS latest FROM apt_transactions WHERE canceled = false ${scopeSql}`,
+      scopeParams,
+    );
+    const latest = latestRows[0]?.latest ?? shiftMonth(new Date().toISOString().slice(0, 7), -1);
+    const months = recentMonths(latest, scope.ratioMonths);
+    const earliestMonth = shiftMonth(
+      latest,
+      -((scope.lookbackMonths - 1) + (scope.referenceMonths - 1)),
+    );
+
+    const transactionsSql =
+      `SELECT t.*, g.dong
+         FROM apt_transactions t
+         JOIN regions g ON g.legal_dong_code = t.legal_dong_code
+        WHERE t.canceled = false AND t.deal_month >= $1 ${lawdCds ? 'AND t.lawd_cd = ANY($2::text[])' : ''}
+        ORDER BY t.deal_month`;
+    const { rows: transactionRows } = await this.db.query<TransactionRow & { dong: string }>(
+      transactionsSql,
+      lawdCds ? [earliestMonth, lawdCds] : [earliestMonth],
+    );
+
+    const rentsSql =
+      `SELECT r.*, g.dong
+         FROM apt_rent_transactions r
+         JOIN regions g ON g.legal_dong_code = r.legal_dong_code
+        WHERE r.contract_type = 'jeonse' AND r.deal_month >= $1 ${lawdCds ? 'AND r.lawd_cd = ANY($2::text[])' : ''}`;
+    const { rows: rentRows } = await this.db.query<RentRow & { dong: string }>(
+      rentsSql,
+      lawdCds ? [months[0], lawdCds] : [months[0]],
+    );
+
+    const complexes = (await this.listComplexes()).filter((row) => (lawdCds ? lawdCds.includes(row.lawdCd) : true));
+    const regions = await this.listRegions();
+
+    return buildRadarDealSet({
+      transactions: transactionRows.map(mapTransaction),
+      rents: rentRows.map(mapRent),
+      complexes,
+      regions,
+      months,
+      referenceMonths: scope.referenceMonths,
+      lookbackMonths: scope.lookbackMonths,
+    });
+  }
+
+  async createAlertRule(rule: AlertRule, lastMatchedCount: number): Promise<AlertRule> {
+    const { rows } = await this.db.query<AlertRuleRow>(
+      `INSERT INTO alert_rules
+         (rule_id, name, lawd_cds, min_households, area_band, max_discount_pct, min_score, channels, last_matched_count, created_at)
+       VALUES ($1, $2, $3::text[], $4, $5, $6, $7, $8::text[], $9, $10)
+       ON CONFLICT (rule_id) DO UPDATE
+         SET name = EXCLUDED.name,
+             lawd_cds = EXCLUDED.lawd_cds,
+             min_households = EXCLUDED.min_households,
+             area_band = EXCLUDED.area_band,
+             max_discount_pct = EXCLUDED.max_discount_pct,
+             min_score = EXCLUDED.min_score,
+             channels = EXCLUDED.channels,
+             last_matched_count = EXCLUDED.last_matched_count,
+             updated_at = now()
+       RETURNING *`,
+      [
+        rule.ruleId,
+        rule.name,
+        rule.lawdCds,
+        rule.minHouseholds,
+        rule.areaBand,
+        rule.maxDiscountPct,
+        rule.minScore,
+        rule.channels,
+        lastMatchedCount,
+        rule.createdAt,
+      ],
+    );
+    return rows[0] ? mapAlertRule(rows[0]) : rule;
+  }
+
+  async listAlertRules(): Promise<AlertRule[]> {
+    const { rows } = await this.db.query<AlertRuleRow>(
+      'SELECT * FROM alert_rules ORDER BY created_at DESC, rule_id',
+    );
+    return rows.map(mapAlertRule);
   }
 
   async insertBehaviorEvents(records: BehaviorEventRecord[]): Promise<EventInsertResult> {

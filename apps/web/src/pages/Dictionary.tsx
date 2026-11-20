@@ -35,6 +35,21 @@ const METRICS = [
     rule: '다른 대출·신용대출 미반영 · 비교용 지표',
   },
   {
+    name: '기준 시세(reference_median)',
+    definition: '같은 단지·같은 면적 구간(60·85·115㎡ 경계)의 최근 6개월 중위 매매가에서 해당 거래를 뺀 값.',
+    rule: '해제 거래 제외 · 표본 3건 미만이면 그 매물은 레이더에서 제외',
+  },
+  {
+    name: '할인율(discount_pct)',
+    definition: '(거래가 − 기준 시세) ÷ 기준 시세 × 100. 음수면 기준 시세보다 싼 거래.',
+    rule: '목표 할인율 -8%는 "할인율 ≤ -8%"를 뜻한다(기본값)',
+  },
+  {
+    name: '매물 점수(deal_score)',
+    definition: '할인율 45 + 전세가율 20 + 최근 3개월 거래량 15 + 단지 규모(350세대 이상) 20 = 100점.',
+    rule: '70점 이상 적극 검토 · 55점 이상 검토 · 40점 이상 관찰 · -20% 이하 할인은 특수 조건 확인 신호를 붙임',
+  },
+  {
     name: '퍼널 전환율(funnel_conversion)',
     definition: '한 단계 앞 단계에 도달한 세션 중 다음 단계에 도달한 세션 비율.',
     rule: '세션 안에서 발생 시각 순서를 지킨 경우만 인정 · 새로고침 후에도 로컬 스트림 유지',
@@ -54,6 +69,8 @@ const QUALITY_RULES = [
   ['중복 수집', 'deal_hash(sha256) 충돌 시 ON CONFLICT DO UPDATE로 값만 갱신한다.', 'infra/postgres/init.sql'],
   ['행동 이벤트 스키마 불일치', '적재하지 않고 index·사유와 함께 207로 돌려준다.', 'routes/events.ts'],
   ['행동 이벤트 중복', '(event_id, occurred_date) 기준 중복은 버린다.', 'user_behavior_events PK'],
+  ['레이더 기준 시세 표본 부족', '표본 3건 미만이면 할인율을 만들지 않고 목록에서 뺀다(thinReferenceDeals로 집계).', 'shared/radar.ts'],
+  ['전세 표본 없음', '전세가율·갭을 null로 두고 점수에서 해당 항목을 0점 처리한다.', 'shared/radar.ts'],
 ];
 
 const API_ROWS = [
@@ -65,6 +82,9 @@ const API_ROWS = [
   ['GET', '/api/v1/transactions/monthly', '지역 월별 집계'],
   ['GET', '/api/v1/rents', '전월세 실거래(전세·월세)'],
   ['GET', '/api/v1/market/jeonse-ratio', '월별 전세가율(면적 구간 매칭)'],
+  ['GET', '/api/v1/radar/deals', '350세대+ 급매·저평가 레이더'],
+  ['GET', '/api/v1/radar/alert-rules', '저장된 알림 규칙'],
+  ['POST', '/api/v1/radar/alert-rules', '알림 규칙 저장 + 미리보기'],
   ['GET', '/api/v1/macro', '거시지표 시계열'],
   ['GET', '/api/v1/macro/latest', '지표별 최신값'],
   ['GET', '/api/v1/pipeline/sources', '출처·기준일 정책'],
@@ -175,6 +195,37 @@ export default function Dictionary() {
             </p>
           </div>
         </div>
+      </Card>
+
+      <Card title="급매 레이더 정의" subtitle="기준 시세·할인율·점수·알림 조건을 한 곳에서 고정">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg bg-slate-50 px-3 py-2">
+            <p className="text-xs font-semibold text-slate-800">기준 시세와 할인율</p>
+            <p className="num mt-1 text-[11px] text-slate-700">
+              할인율 = (거래가 − 최근 6개월 같은 단지·면적 중위가) ÷ 중위가 × 100
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              같은 단지라도 59㎡와 84㎡는 시세 수준이 달라 60·85·115㎡ 경계로 구간을 나눕니다. 표본이 3건 미만인 구간은
+              기준 시세를 만들지 않고, 목표 할인율 -8%는 할인율 ≤ -8%를 뜻합니다.
+            </p>
+          </div>
+          <div className="rounded-lg bg-slate-50 px-3 py-2">
+            <p className="text-xs font-semibold text-slate-800">매물 점수 (0~100)</p>
+            <ul className="mt-1 space-y-0.5 text-[11px] leading-relaxed text-slate-600">
+              <li>· 할인율: -4% 7점 · -6% 14점 · -8% 24점 · -10% 32점 · -12% 38점 · -15%↑ 45점</li>
+              <li>· 전세가율: 65%↓ 20점 · 70%↓ 16점 · 75%↓ 12점 · 80%↓ 6점</li>
+              <li>· 3개월 거래: 2건 4점 · 3건 7점 · 5건 11점 · 8건↑ 15점</li>
+              <li>· 단지 규모: 350세대 8점 · 500세대 12점 · 700세대 16점 · 1,000세대↑ 20점</li>
+            </ul>
+            <p className="mt-1 text-[10px] text-slate-400">
+              70점 이상 적극 검토 · 55점 이상 검토 · 40점 이상 관찰. -20% 이하 할인과 직거래는 별도 확인 신호를 붙입니다.
+            </p>
+          </div>
+        </div>
+        <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+          알림은 조건을 저장한 뒤 카카오 알림톡(NAVER Cloud SENS 템플릿)과 웹훅 payload를 미리보기로 보여줍니다. 실제 발송은
+          배포 환경의 승인된 템플릿·발신 프로필·웹훅 URL로 워커가 처리하며, 데모에서는 저장과 미리보기까지만 동작합니다.
+        </p>
       </Card>
 
       <Card title="데이터 품질 규칙" subtitle="수집·정규화 단계에서 실제로 적용되는 규칙">

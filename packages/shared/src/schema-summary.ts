@@ -194,6 +194,25 @@ export const SCHEMA_TABLES: SchemaTable[] = [
     note: '보존 기간이 지난 월은 DROP PARTITION으로 지운다.',
   },
   {
+    name: 'alert_rules',
+    kind: 'table',
+    purpose: '사용자가 저장한 급매 레이더 알림 규칙(조건·채널)',
+    columns: [
+      { name: 'rule_id', type: 'text', key: 'PK' },
+      { name: 'name', type: 'text' },
+      { name: 'lawd_cds', type: 'text[]', note: '대상 시군구 5자리 코드' },
+      { name: 'min_households', type: 'integer', note: '기본 350' },
+      { name: 'area_band', type: 'text', note: 'under60 | 60to85 | 85to115 | over115 | all' },
+      { name: 'max_discount_pct', type: 'numeric(4,1)', note: '중위가 대비 목표 할인율' },
+      { name: 'min_score', type: 'integer' },
+      { name: 'channels', type: 'text[]', note: 'kakao_alimtalk | webhook' },
+      { name: 'last_matched_count', type: 'integer', note: '마지막 미리보기 매칭 건수' },
+      { name: 'created_at', type: 'timestamptz' },
+    ],
+    indexes: ['alert_rules_created_idx'],
+    note: '실제 발송(알림톡·웹훅)은 워커가 이 규칙을 읽어 처리하고, 발송 결과는 별도 로그로 남긴다.',
+  },
+  {
     name: 'event_funnel_daily',
     kind: 'table',
     purpose: '일 단위 순서 보정 퍼널 집계(대시보드와 같은 정의)',
@@ -268,4 +287,5 @@ export const SCHEMA_RELATIONS: SchemaRelation[] = [
   { from: 'pipeline_runs', fromColumn: 'source_id', to: 'ingestion_sources', toColumn: 'source_id', label: '실행 → 소스' },
   { from: 'pipeline_run_tasks', fromColumn: 'run_id', to: 'pipeline_runs', toColumn: 'run_id', label: '태스크 → 실행' },
   { from: 'dead_letter_queue', fromColumn: 'run_id', to: 'pipeline_runs', toColumn: 'run_id', label: 'DLQ → 실행' },
+  { from: 'alert_rules', fromColumn: 'lawd_cds', to: 'regions', toColumn: 'lawd_cd', label: '알림 규칙 → 지역' },
 ];

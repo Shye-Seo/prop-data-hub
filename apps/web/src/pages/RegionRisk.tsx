@@ -15,9 +15,12 @@ import { formatDate, formatKrwKorean, formatNumber, formatPct, formatPyeongPrice
 import { tracker } from '../lib/tracker';
 
 const COLORS: Record<string, string> = {
-  '26290': '#0f766e',
-  '26500': '#1d4ed8',
+  '26230': '#0f766e',
+  '26260': '#1d4ed8',
+  '26290': '#7c3aed',
   '26350': '#b45309',
+  '26470': '#be185d',
+  '26500': '#0e7490',
 };
 
 const SORTS = [
@@ -73,7 +76,7 @@ export default function RegionRisk() {
       <div className="flex flex-wrap items-center gap-2">
         <span className="label mr-1">비교 구</span>
         <button type="button" className={`chip ${lawdCd === null ? 'chip-active' : ''}`} onClick={() => setLawdCd(null)} aria-pressed={lawdCd === null}>
-          남구·수영구·해운대구
+          전체 6개 구
         </button>
         {REGION_RISK_SUMMARIES.map((row) => (
           <button
@@ -118,7 +121,7 @@ export default function RegionRisk() {
         action={<span className="text-[11px] text-slate-400">단위: %</span>}
       >
         <LineChart
-          ariaLabel="남구 수영구 해운대구 전세가율 추이 선 그래프"
+          ariaLabel="부산 6개 구 전세가율 추이 선 그래프"
           series={trendSeries}
           height={240}
           formatValue={(value) => `${value.toFixed(1)}%`}

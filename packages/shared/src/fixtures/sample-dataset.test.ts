@@ -12,9 +12,10 @@ import { jeonseRatioSeries } from '../risk';
 describe('샘플 데이터셋', () => {
   const dataset = buildSampleDataset();
 
-  it('6개 법정동·16개 단지·24개월 거래를 만든다', () => {
-    expect(dataset.regions).toHaveLength(6);
-    expect(SAMPLE_COMPLEXES).toHaveLength(16);
+  it('부산 6개 구 16개 법정동·33개 단지·24개월 거래를 만든다', () => {
+    expect(dataset.regions).toHaveLength(16);
+    expect(SAMPLE_COMPLEXES).toHaveLength(33);
+    expect(new Set(SAMPLE_REGIONS.map((region) => region.lawdCd)).size).toBe(6);
     expect(dataset.transactions.length).toBeGreaterThan(500);
     const months = new Set(dataset.transactions.map((row) => row.dealMonth));
     expect(months.size).toBe(24);

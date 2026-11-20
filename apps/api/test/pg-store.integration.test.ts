@@ -332,4 +332,75 @@ describe('PostgreSQL 스키마와 PgStore (PGlite)', () => {
     expect(series.at(-1)?.complexCount).toBe(1);
     expect(series[0]?.ratioPct).toBe(0);
   });
+
+  it('PgStore가 레이더 표본을 DB에서 만들어 기준 시세·할인율을 계산한다', async () => {
+    // 레이더 전용 단지: 84㎡ 3건 이상 + 기준월보다 싼 1건을 넣어 기준 시세 계산을 확인한다.
+    await db.query(
+      `INSERT INTO regions (legal_dong_code, lawd_cd, sido, sigungu, dong)
+       VALUES ('2623010200', '26230', '부산광역시', '부산진구', '전포동')
+       ON CONFLICT (legal_dong_code) DO NOTHING`,
+    );
+    await db.query(
+      `INSERT INTO apartment_complexes (complex_id, name, legal_dong_code, lawd_cd, built_year, households, representative_area_m2)
+       VALUES ('MOLIT-26230-002', '서면아이파크', '2623010200', '26230', 2020, 2144, 84.97)
+       ON CONFLICT (complex_id) DO NOTHING`,
+    );
+    const insertDeal = `
+      INSERT INTO apt_transactions (
+        deal_hash, lawd_cd, legal_dong_code, apt_name, complex_id, jibun, built_year, deal_month, deal_date,
+        floor, area_m2, price_krw, price_per_pyeong, deal_type, canceled, source_id, as_of_date, collected_at, source_note
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+      ON CONFLICT (deal_hash) DO NOTHING
+    `;
+    const radarRows = [
+      ['r'.repeat(64), '26230', '2623010200', '서면아이파크', 'MOLIT-26230-002', '537', 2020, '2026-07', '2026-07-11', 15, 84.97, 700_000_000, 27_232_000, '중개거래', false, 'molit_apt_trade', '2026-07-01', '2026-07-30T02:00:00Z', null],
+      ['s'.repeat(64), '26230', '2623010200', '서면아이파크', 'MOLIT-26230-002', '537', 2020, '2026-08', '2026-08-09', 21, 84.97, 702_000_000, 27_310_000, '중개거래', false, 'molit_apt_trade', '2026-08-01', '2026-08-30T02:00:00Z', null],
+      ['t'.repeat(64), '26230', '2623010200', '서면아이파크', 'MOLIT-26230-002', '537', 2020, '2026-08', '2026-08-24', 7, 84.97, 698_000_000, 27_155_000, '중개거래', false, 'molit_apt_trade', '2026-08-01', '2026-08-30T02:00:00Z', null],
+      // 급매: 중위가 대비 약 -10%
+      ['u'.repeat(64), '26230', '2623010200', '서면아이파크', 'MOLIT-26230-002', '537', 2020, '2026-09', '2026-09-16', 12, 84.97, 630_000_000, 24_509_000, '중개거래', false, 'molit_apt_trade', '2026-09-01', '2026-09-30T02:00:00Z', null],
+    ];
+    for (const row of radarRows) await db.query(insertDeal, row);
+
+    const set = await store.radarDealSet({ lawdCds: ['26230'], referenceMonths: 6, lookbackMonths: 2, ratioMonths: 12 });
+    const deal = set.deals.find((row) => row.dealHash === 'u'.repeat(64));
+    expect(deal).toBeDefined();
+    expect(deal?.complexName).toBe('서면아이파크');
+    expect(deal?.households).toBe(2144);
+    expect(deal?.referenceSamples).toBe(3);
+    expect(deal?.medianPriceKrw).toBe(700_000_000);
+    expect(deal?.discountPct).toBe(-10);
+    expect(deal?.areaBand).toBe('60to85');
+    expect(deal?.dealScore).toBeGreaterThanOrEqual(24);
+    expect(deal?.signals.length).toBeGreaterThan(0);
+  });
+
+  it('알림 규칙을 저장하고 다시 조회한다(text[]·numeric 컬럼 포함)', async () => {
+    const rule = {
+      ruleId: 'rule_pg_001',
+      name: '부산진구 84㎡ 급매',
+      lawdCds: ['26230', '26290'],
+      minHouseholds: 350,
+      areaBand: '60to85' as const,
+      maxDiscountPct: 8,
+      minScore: 40,
+      channels: ['kakao_alimtalk', 'webhook'] as const,
+      createdAt: '2026-11-20T06:00:00.000Z',
+    };
+    const saved = await store.createAlertRule({ ...rule, channels: [...rule.channels] }, 3);
+    expect(saved.ruleId).toBe('rule_pg_001');
+    expect(saved.lastMatchedCount).toBe(3);
+    expect(saved.lawdCds).toEqual(['26230', '26290']);
+
+    // 같은 규칙을 다시 저장해도 행이 늘지 않고 값만 갱신된다.
+    await store.createAlertRule({ ...rule, name: '부산진구 84㎡ 급매(수정)', channels: ['webhook'] }, 5);
+    const listed = await store.listAlertRules();
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.name).toBe('부산진구 84㎡ 급매(수정)');
+    expect(listed[0]?.channels).toEqual(['webhook']);
+    expect(listed[0]?.lastMatchedCount).toBe(5);
+    expect(listed[0]?.maxDiscountPct).toBe(8);
+
+    const { rows } = await db.query<{ count: string }>('SELECT count(*)::text AS count FROM alert_rules');
+    expect(Number(rows[0]?.count)).toBe(1);
+  });
 });

@@ -242,6 +242,28 @@ CREATE INDEX IF NOT EXISTS dlq_unresolved_idx
   ON dead_letter_queue (next_retry_at) WHERE resolved_at IS NULL;
 
 -- ---------------------------------------------------------------------------
+-- 4.5 급매 레이더 알림 규칙
+-- ---------------------------------------------------------------------------
+-- 사용자가 저장한 조건(구·세대수·평형·할인율·점수·채널). 저장 시점의 매칭 건수를 남겨
+-- "규칙을 만들 때 몇 건이 걸렸는지"를 나중에 비교한다. 실제 발송은 워커가 담당한다.
+CREATE TABLE IF NOT EXISTS alert_rules (
+  rule_id            text PRIMARY KEY,
+  name               text NOT NULL,
+  lawd_cds           text[] NOT NULL CHECK (array_length(lawd_cds, 1) BETWEEN 1 AND 8),
+  min_households     integer NOT NULL DEFAULT 350 CHECK (min_households >= 0),
+  area_band          text NOT NULL DEFAULT '60to85'
+                     CHECK (area_band IN ('under60', '60to85', '85to115', 'over115', 'all')),
+  max_discount_pct   numeric(4, 1) NOT NULL DEFAULT 8 CHECK (max_discount_pct > 0 AND max_discount_pct <= 50),
+  min_score          integer NOT NULL DEFAULT 40 CHECK (min_score BETWEEN 0 AND 100),
+  channels           text[] NOT NULL DEFAULT ARRAY['kakao_alimtalk']
+                     CHECK (channels <@ ARRAY['kakao_alimtalk', 'webhook']),
+  last_matched_count integer NOT NULL DEFAULT 0,
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  updated_at         timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS alert_rules_created_idx ON alert_rules (created_at DESC);
+
+-- ---------------------------------------------------------------------------
 -- 4. 사용자 행동 이벤트 (월 단위 RANGE 파티션)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_behavior_events (
@@ -469,6 +491,11 @@ CREATE TRIGGER macro_indicators_set_updated_at
 DROP TRIGGER IF EXISTS apt_rent_transactions_set_updated_at ON apt_rent_transactions;
 CREATE TRIGGER apt_rent_transactions_set_updated_at
   BEFORE UPDATE ON apt_rent_transactions
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS alert_rules_set_updated_at ON alert_rules;
+CREATE TRIGGER alert_rules_set_updated_at
+  BEFORE UPDATE ON alert_rules
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 COMMIT;

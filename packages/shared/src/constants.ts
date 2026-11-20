@@ -15,6 +15,8 @@ export type SourceId = (typeof SOURCE_IDS)[keyof typeof SOURCE_IDS];
 export const EVENT_NAMES = [
   'page_view',
   'region_filter_change',
+  'radar_filter_change',
+  'alert_rule_create',
   'complex_compare_add',
   'listing_click',
   'listing_save',

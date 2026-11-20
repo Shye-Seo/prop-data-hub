@@ -10,9 +10,10 @@ export const openApiDocument = {
   openapi: '3.0.3',
   info: {
     title: 'prop-data-hub API',
-    version: '1.1.0',
+    version: '1.2.0',
     description:
       '부동산 실거래가·전월세·거시지표 수집 결과와 사용자 행동 이벤트를 조회·수집하는 API. ' +
+      '부산 주요 구의 350세대 이상 단지 매매 급매·저평가 레이더(/radar)와 맞춤 알림 규칙을 포함한다. ' +
       '모든 금액은 원(KRW), 면적은 ㎡, 평당가는 원/평 기준이다. ' +
       '데모(GitHub Pages)에서는 서버 없이 같은 명세의 예시 응답을 실행해 본다.',
   },
@@ -24,6 +25,7 @@ export const openApiDocument = {
     { name: 'reference', description: '지역·단지 기준정보' },
     { name: 'transactions', description: '실거래가 조회' },
     { name: 'market', description: '전월세·전세가율' },
+    { name: 'radar', description: '350세대+ 매매 급매·저평가 레이더와 알림 규칙' },
     { name: 'macro', description: '거시지표' },
     { name: 'pipeline', description: '수집 파이프라인 상태' },
     { name: 'events', description: '사용자 행동 이벤트' },
@@ -321,6 +323,102 @@ export const openApiDocument = {
         responses: { '200': { description: '5단계 퍼널' } },
       },
     },
+    '/api/v1/radar/deals': {
+      get: {
+        tags: ['radar'],
+        summary: '350세대+ 급매·저평가 매물 레이더',
+        description:
+          '같은 단지·같은 면적 구간의 최근 6개월 중위 매매가(해제 제외, 해당 거래 제외)를 기준 시세로 두고, ' +
+          '거래가가 그보다 낮은 매물을 점수화해 내려준다. 점수는 할인율 45 + 전세가율 20 + 3개월 거래량 15 + 단지 규모 20 = 100점이다. ' +
+          '기준 시세 표본이 3건 미만인 (단지, 면적 구간)은 제외한다.',
+        parameters: [
+          { name: 'lawdCds', in: 'query', schema: { type: 'string', example: '26230,26290,26470' }, description: '쉼표 구분 시군구 5자리 코드' },
+          { name: 'minHouseholds', in: 'query', schema: { type: 'integer', minimum: 0, maximum: 20000, default: 350 }, description: '세대수 하한(0이면 조건 해제)' },
+          { name: 'areaBand', in: 'query', schema: { type: 'string', enum: ['under60', '60to85', '85to115', 'over115', 'all'], default: 'all' } },
+          { name: 'maxDiscountPct', in: 'query', schema: { type: 'number', minimum: 1, maximum: 50, default: 8 }, description: '목표 할인율(%p). 8이면 중위가 대비 -8% 이하만' },
+          { name: 'minScore', in: 'query', schema: { type: 'integer', minimum: 0, maximum: 100, default: 0 } },
+          { name: 'referenceMonths', in: 'query', schema: { type: 'integer', minimum: 3, maximum: 12, default: 6 } },
+          { name: 'includeBelowThreshold', in: 'query', schema: { type: 'boolean', default: false }, description: '세대수 조건에 걸린 단지까지 표본으로 함께 볼지' },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 200, default: 30 } },
+          { name: 'offset', in: 'query', schema: { type: 'integer', minimum: 0, default: 0 } },
+        ],
+        responses: {
+          '200': {
+            description: '레이더 매물 목록',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    items: { type: 'array', items: { $ref: '#/components/schemas/RadarDeal' } },
+                    total: { type: 'integer' },
+                    asOfMonth: { type: 'string', example: '2026-09' },
+                    filter: { type: 'object' },
+                    summary: { type: 'object' },
+                    universe: { type: 'object' },
+                    scoreWeights: { type: 'object' },
+                    definition: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '400': { $ref: '#/components/responses/ValidationError' },
+        },
+      },
+    },
+    '/api/v1/radar/alert-rules': {
+      get: {
+        tags: ['radar'],
+        summary: '저장된 알림 규칙 목록',
+        responses: { '200': { description: '알림 규칙 목록' } },
+      },
+      post: {
+        tags: ['radar'],
+        summary: '맞춤 알림 규칙 저장 + 미리보기',
+        description:
+          '규칙을 저장하고 조건에 맞는 현재 매물과 카카오 알림톡(SENS)·웹훅 payload 미리보기를 돌려준다. ' +
+          'sessionId를 함께 보내면 alert_rule_create 행동 이벤트를 같은 요청에서 적재한다. 실제 알림 발송은 하지 않는다.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/AlertRuleDraft' },
+              example: {
+                name: '부산진구·남구 84㎡ 급매',
+                lawdCds: ['26230', '26290'],
+                minHouseholds: 350,
+                areaBand: '60to85',
+                maxDiscountPct: 8,
+                minScore: 40,
+                channels: ['kakao_alimtalk', 'webhook'],
+                sessionId: 'sess-8f2a1c9d3e',
+                userPseudoId: 'user-2b7c4d1a9f',
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: '저장된 규칙과 알림 미리보기',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    rule: { $ref: '#/components/schemas/AlertRule' },
+                    preview: { $ref: '#/components/schemas/AlertPreview' },
+                    event: { type: 'object' },
+                    saved: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
+          '400': { $ref: '#/components/responses/ValidationError' },
+        },
+      },
+    },
     '/api-docs/openapi.json': {
       get: {
         tags: ['reference'],
@@ -452,6 +550,99 @@ export const openApiDocument = {
           saleSamples: { type: 'integer' },
         },
       },
+      RadarDeal: {
+        type: 'object',
+        required: ['dealHash', 'complexName', 'priceKrw', 'medianPriceKrw', 'discountPct', 'dealScore'],
+        properties: {
+          dealHash: { type: 'string' },
+          complexId: { type: 'string' },
+          complexName: { type: 'string', example: '서면아이파크' },
+          lawdCd: { type: 'string', example: '26230' },
+          sigungu: { type: 'string', example: '부산진구' },
+          dong: { type: 'string', example: '전포동' },
+          households: { type: 'integer', example: 2144 },
+          builtYear: { type: 'integer', example: 2020 },
+          areaM2: { type: 'number', example: 84.97 },
+          areaBand: { type: 'string', enum: ['under60', '60to85', '85to115', 'over115'] },
+          floor: { type: 'integer', nullable: true },
+          dealDate: { type: 'string', format: 'date' },
+          dealMonth: { type: 'string', example: '2026-09' },
+          priceKrw: { type: 'integer' },
+          pricePerPyeong: { type: 'integer' },
+          medianPriceKrw: { type: 'integer', description: '같은 단지·면적 구간 최근 6개월 중위 매매가' },
+          medianPricePerPyeong: { type: 'integer' },
+          referenceSamples: { type: 'integer', description: '기준 시세 표본 수(최소 3)' },
+          discountPct: { type: 'number', example: -12, description: '기준 시세 대비 %. 음수면 저평가' },
+          jeonseRatioPct: { type: 'number', nullable: true },
+          gapKrw: { type: 'integer', nullable: true, description: '매매가 − 전세보증금(면적 환산)' },
+          volume3m: { type: 'integer', description: '같은 단지·면적 최근 3개월 거래 건수' },
+          dealScore: { type: 'integer', example: 85 },
+          grade: { type: 'string', enum: ['strong', 'good', 'watch', 'marginal'] },
+          signals: { type: 'array', items: { type: 'object' } },
+          dealType: { type: 'string', example: '중개거래' },
+          asOfMonth: { type: 'string' },
+        },
+      },
+      AlertRule: {
+        type: 'object',
+        required: ['ruleId', 'name', 'lawdCds', 'minHouseholds', 'areaBand', 'maxDiscountPct', 'channels'],
+        properties: {
+          ruleId: { type: 'string', example: 'rule_26230_60to85' },
+          name: { type: 'string', example: '부산진구·남구 84㎡ 급매' },
+          lawdCds: { type: 'array', items: { type: 'string' }, example: ['26230', '26290'] },
+          minHouseholds: { type: 'integer', example: 350 },
+          areaBand: { type: 'string', enum: ['under60', '60to85', '85to115', 'over115', 'all'] },
+          maxDiscountPct: { type: 'number', example: 8 },
+          minScore: { type: 'integer', example: 40 },
+          channels: { type: 'array', items: { type: 'string', enum: ['kakao_alimtalk', 'webhook'] } },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      AlertRuleDraft: {
+        type: 'object',
+        required: ['name', 'lawdCds'],
+        properties: {
+          name: { type: 'string', maxLength: 60 },
+          lawdCds: { type: 'array', items: { type: 'string', pattern: '^\\d{5}$' }, minItems: 1, maxItems: 8 },
+          minHouseholds: { type: 'integer', minimum: 0, maximum: 20000, default: 350 },
+          areaBand: { type: 'string', enum: ['under60', '60to85', '85to115', 'over115', 'all'], default: '60to85' },
+          maxDiscountPct: { type: 'number', minimum: 1, maximum: 50, default: 8 },
+          minScore: { type: 'integer', minimum: 0, maximum: 100, default: 40 },
+          channels: { type: 'array', items: { type: 'string', enum: ['kakao_alimtalk', 'webhook'] }, default: ['kakao_alimtalk'] },
+          sessionId: { type: 'string', description: '보내면 alert_rule_create 이벤트를 적재한다' },
+          userPseudoId: { type: 'string' },
+        },
+      },
+      AlertPreview: {
+        type: 'object',
+        properties: {
+          rule: { $ref: '#/components/schemas/AlertRule' },
+          condition: { type: 'string', example: '부산진구·남구 · 350세대 이상 · 60~85㎡ · 중위가 대비 -8% 이하' },
+          matchedCount: { type: 'integer' },
+          sample: { type: 'array', items: { $ref: '#/components/schemas/RadarDeal' } },
+          channels: { type: 'array', items: { type: 'string' } },
+          kakao: {
+            type: 'object',
+            properties: {
+              templateCode: { type: 'string', example: 'PROP_RADAR_DEAL_01' },
+              message: { type: 'string' },
+              variables: { type: 'object' },
+              buttons: { type: 'array', items: { type: 'object' } },
+            },
+          },
+          webhook: {
+            type: 'object',
+            properties: {
+              method: { type: 'string', example: 'POST' },
+              url: { type: 'string' },
+              headers: { type: 'object' },
+              body: { type: 'object' },
+            },
+          },
+          previewOnly: { type: 'boolean', example: true },
+          note: { type: 'string' },
+        },
+      },
       BehaviorEvent: {
         type: 'object',
         required: ['name', 'occurredAt', 'sessionId', 'userPseudoId', 'page', 'props'],
@@ -462,6 +653,8 @@ export const openApiDocument = {
             enum: [
               'page_view',
               'region_filter_change',
+              'radar_filter_change',
+              'alert_rule_create',
               'complex_compare_add',
               'listing_click',
               'listing_save',

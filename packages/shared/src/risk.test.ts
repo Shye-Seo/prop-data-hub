@@ -211,7 +211,7 @@ describe('샘플 데이터셋 리스크 평가', () => {
         months,
       }),
     );
-    expect(assessments).toHaveLength(16);
+    expect(assessments).toHaveLength(SAMPLE_COMPLEXES.length);
     for (const row of assessments) {
       expect(row.jeonseRatioPct).toBeGreaterThan(50);
       expect(row.jeonseRatioPct).toBeLessThan(100);

@@ -4,6 +4,7 @@ export * from './hash';
 export * from './deal-hash';
 export * from './events';
 export * from './risk';
+export * from './radar';
 export * from './openapi';
 export * from './schema-summary';
 export * from './api-mock';

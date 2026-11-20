@@ -68,7 +68,7 @@ export function monthsRange(months: number): { startMonth: string; endMonth: str
 export function routeTable(server: FastifyInstance): void {
   server.get('/api/v1', async () => ({
     name: 'prop-data-hub API',
-    version: '1.0.0',
+    version: '1.2.0',
     documentation: '/api-docs',
     endpoints: [
       'GET /health',
@@ -79,6 +79,9 @@ export function routeTable(server: FastifyInstance): void {
       'GET /api/v1/transactions/monthly',
       'GET /api/v1/rents',
       'GET /api/v1/market/jeonse-ratio',
+      'GET /api/v1/radar/deals',
+      'GET /api/v1/radar/alert-rules',
+      'POST /api/v1/radar/alert-rules',
       'GET /api/v1/macro',
       'GET /api/v1/macro/latest',
       'GET /api/v1/pipeline/sources',
