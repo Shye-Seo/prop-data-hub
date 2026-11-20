@@ -90,6 +90,8 @@ export class AnalyticsTracker {
   rejected = 0;
   lastFlushAt: string | null = null;
   mode: 'demo' | 'api';
+  readonly batchSize = BATCH_SIZE;
+  readonly flushIntervalMs = FLUSH_INTERVAL_MS;
 
   constructor() {
     const apiBase = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '');
@@ -225,6 +227,11 @@ export class AnalyticsTracker {
 
   getRecent(limit = 20): TrackedEvent[] {
     return this.events.slice(-limit).reverse();
+  }
+
+  /** 아직 전송하지 않은 큐 길이. 인스펙터의 배치 버퍼 단계가 쓴다. */
+  getQueueSize(): number {
+    return this.queue.length;
   }
 
   getFunnel(): FunnelStepAggregate[] {

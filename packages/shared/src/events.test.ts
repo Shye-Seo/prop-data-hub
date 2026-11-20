@@ -18,7 +18,7 @@ function event(partial: Partial<BehaviorEventInput> & Pick<BehaviorEventInput, '
 }
 
 describe('behaviorEventSchema', () => {
-  it('정의된 6종 이벤트를 모두 허용한다', () => {
+  it('정의된 9종 이벤트를 모두 허용한다', () => {
     const samples: BehaviorEventInput[] = [
       event({ name: 'page_view', props: { route: '/overview', isInitialLoad: true } }),
       event({
@@ -40,6 +40,22 @@ describe('behaviorEventSchema', () => {
         },
       }),
       event({ name: 'pipeline_source_inspect', props: { sourceId: 'molit_apt_trade', panel: 'sources' } }),
+      event({
+        name: 'listing_click',
+        props: {
+          complexId: 'MOLIT-26290-001',
+          aptName: '문현베스티움',
+          dealHash: 'a'.repeat(64),
+          priceKrw: 845_000_000,
+          areaM2: 84.98,
+          source: 'explore_table',
+        },
+      }),
+      event({
+        name: 'listing_save',
+        props: { complexId: 'MOLIT-26290-001', aptName: '문현베스티움', action: 'add', savedCount: 1 },
+      }),
+      event({ name: 'api_doc_mock_run', props: { endpoint: '/api/v1/rents', method: 'get', status: 200 } }),
       event({ name: 'funnel_step_complete', props: { step: 'report_export', route: '/overview' } }),
     ];
     expect(new Set(samples.map((row) => row.name))).toEqual(new Set(EVENT_NAMES));
@@ -67,7 +83,7 @@ describe('behaviorEventSchema', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('이벤트 카탈로그가 6종 이벤트와 5단계 퍼널을 모두 설명한다', () => {
+  it('이벤트 카탈로그가 9종 이벤트와 5단계 퍼널을 모두 설명한다', () => {
     expect(EVENT_CATALOG).toHaveLength(EVENT_NAMES.length);
     expect(FUNNEL_STEPS).toHaveLength(5);
     for (const definition of EVENT_CATALOG) {

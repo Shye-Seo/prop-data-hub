@@ -10,6 +10,9 @@ import type { RouteKey } from '../lib/router';
 const REGION_COLORS: Record<string, string> = {
   '2629051000': '#0f766e',
   '2629052000': '#1d4ed8',
+  '2650051000': '#7c3aed',
+  '2650052000': '#be185d',
+  '2650055000': '#0e7490',
   '2635054000': '#b45309',
 };
 
@@ -90,6 +93,9 @@ export default function Overview({ navigate }: { navigate: (route: RouteKey) => 
         ))}
         <span className="ml-auto text-[11px] text-slate-500">
           표본 {dataset.transactions.filter((row) => !row.canceled).length.toLocaleString('ko-KR')}건 · 24개월
+          <button type="button" className="ml-2 font-semibold text-teal-700" onClick={() => navigate('risk')}>
+            구별 리스크 →
+          </button>
         </span>
       </div>
 

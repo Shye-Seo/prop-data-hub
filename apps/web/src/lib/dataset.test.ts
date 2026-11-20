@@ -10,9 +10,9 @@ import {
 } from './dataset';
 
 describe('화면 데이터 레이어', () => {
-  it('지역 3곳과 단지 12개를 준비한다', () => {
-    expect(REGION_OPTIONS).toHaveLength(3);
-    expect(ALL_COMPLEX_STATS).toHaveLength(12);
+  it('지역 6곳과 단지 16개를 준비한다', () => {
+    expect(REGION_OPTIONS).toHaveLength(6);
+    expect(ALL_COMPLEX_STATS).toHaveLength(16);
     expect(MONTHS).toHaveLength(24);
     expect(MONTHS[23]).toBe('2026-09');
   });

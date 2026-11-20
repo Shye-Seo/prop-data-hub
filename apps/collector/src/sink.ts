@@ -1,5 +1,6 @@
 import type {
   ApartmentComplex,
+  AptRentTransaction,
   AptTransaction,
   DeadLetterEntry,
   MacroIndicator,
@@ -17,6 +18,7 @@ export interface IngestionSink {
   saveRegions(regions: Region[]): Promise<number>;
   saveComplexes(complexes: ApartmentComplex[]): Promise<number>;
   upsertTransactions(rows: AptTransaction[]): Promise<UpsertResult>;
+  upsertRentTransactions(rows: AptRentTransaction[]): Promise<UpsertResult>;
   upsertMacro(rows: MacroIndicator[]): Promise<UpsertResult>;
   startRun(run: PipelineRun): Promise<void>;
   finishRun(run: PipelineRun): Promise<void>;
@@ -87,6 +89,70 @@ export function transactionParams(row: AptTransaction): unknown[] {
   ];
 }
 
+export const RENT_COLUMNS = [
+  'rent_hash',
+  'lawd_cd',
+  'legal_dong_code',
+  'apt_name',
+  'complex_id',
+  'jibun',
+  'built_year',
+  'deal_month',
+  'deal_date',
+  'floor',
+  'area_m2',
+  'deposit_krw',
+  'monthly_rent_krw',
+  'contract_type',
+  'contract_term_months',
+  'renewal_requested',
+  'source_id',
+  'as_of_date',
+  'collected_at',
+  'source_note',
+] as const;
+
+/**
+ * 전월세 멱등 업서트. rent_hash 충돌 시 보증금·월세·계약기간만 갱신한다.
+ * 같은 계약을 다시 받았을 때 신고 정정(보증금 변경 등)이 반영되도록 값을 덮어쓴다.
+ */
+export const RENT_UPSERT_SQL = `INSERT INTO apt_rent_transactions (${RENT_COLUMNS.join(', ')})
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+ON CONFLICT (rent_hash) DO UPDATE
+  SET deposit_krw = EXCLUDED.deposit_krw,
+      monthly_rent_krw = EXCLUDED.monthly_rent_krw,
+      contract_term_months = EXCLUDED.contract_term_months,
+      renewal_requested = EXCLUDED.renewal_requested,
+      as_of_date = EXCLUDED.as_of_date,
+      collected_at = EXCLUDED.collected_at,
+      source_note = EXCLUDED.source_note
+RETURNING (xmax = 0) AS inserted`;
+
+export function rentParams(row: AptRentTransaction): unknown[] {
+  return [
+    row.rentHash,
+    row.lawdCd,
+    row.legalDongCode,
+    row.aptName,
+    row.complexId,
+    row.jibun,
+    row.builtYear,
+    row.dealMonth,
+    row.dealDate,
+    row.floor,
+    row.areaM2,
+    row.depositKrw,
+    row.monthlyRentKrw,
+    row.contractType,
+    row.contractTermMonths,
+    row.renewalRequested,
+    row.sourceId,
+    row.asOfDate,
+    row.collectedAt,
+    row.sourceNote,
+  ];
+}
+
 export const MACRO_UPSERT_SQL = `INSERT INTO macro_indicators
   (indicator_code, period_date, value, unit, indicator_name, source_id, as_of_date, collected_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -116,6 +182,7 @@ export class MemorySink implements IngestionSink {
   readonly regions = new Map<string, Region>();
   readonly complexes = new Map<string, ApartmentComplex>();
   readonly transactions = new Map<string, AptTransaction>();
+  readonly rentTransactions = new Map<string, AptRentTransaction>();
   readonly macro = new Map<string, MacroIndicator>();
   readonly runs = new Map<string, PipelineRun>();
   readonly tasks: PipelineRunTask[] = [];
@@ -138,6 +205,17 @@ export class MemorySink implements IngestionSink {
       if (this.transactions.has(row.dealHash)) updated += 1;
       else inserted += 1;
       this.transactions.set(row.dealHash, row);
+    }
+    return { inserted, updated };
+  }
+
+  async upsertRentTransactions(rows: AptRentTransaction[]): Promise<UpsertResult> {
+    let inserted = 0;
+    let updated = 0;
+    for (const row of rows) {
+      if (this.rentTransactions.has(row.rentHash)) updated += 1;
+      else inserted += 1;
+      this.rentTransactions.set(row.rentHash, row);
     }
     return { inserted, updated };
   }

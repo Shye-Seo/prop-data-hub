@@ -77,6 +77,8 @@ export function routeTable(server: FastifyInstance): void {
       'GET /api/v1/complexes/:complexId/monthly',
       'GET /api/v1/transactions',
       'GET /api/v1/transactions/monthly',
+      'GET /api/v1/rents',
+      'GET /api/v1/market/jeonse-ratio',
       'GET /api/v1/macro',
       'GET /api/v1/macro/latest',
       'GET /api/v1/pipeline/sources',

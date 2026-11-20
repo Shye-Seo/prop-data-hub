@@ -1,9 +1,11 @@
 import { createDealHash } from '../deal-hash';
 import { pricePerPyeongKrw, recentMonths, shiftMonth } from '../metrics';
+import { createRentHash } from '../normalize/molit-rent';
 import { SOURCE_IDS } from '../constants';
 import { SOURCE_CATALOG } from '../sources';
 import type {
   ApartmentComplex,
+  AptRentTransaction,
   AptTransaction,
   DeadLetterEntry,
   MacroIndicator,
@@ -25,8 +27,18 @@ export const SAMPLE_MONTHS = 24;
 export const SAMPLE_REGIONS: Region[] = [
   { lawdCd: '26290', legalDongCode: '2629051000', sido: '부산광역시', sigungu: '남구', dong: '문현동' },
   { lawdCd: '26290', legalDongCode: '2629052000', sido: '부산광역시', sigungu: '남구', dong: '대연동' },
+  { lawdCd: '26500', legalDongCode: '2650051000', sido: '부산광역시', sigungu: '수영구', dong: '광안동' },
+  { lawdCd: '26500', legalDongCode: '2650052000', sido: '부산광역시', sigungu: '수영구', dong: '남천동' },
+  { lawdCd: '26500', legalDongCode: '2650055000', sido: '부산광역시', sigungu: '수영구', dong: '민락동' },
   { lawdCd: '26350', legalDongCode: '2635054000', sido: '부산광역시', sigungu: '해운대구', dong: '우동' },
 ];
+
+/** 구(시군구) 단위 비교 뷰에서 쓰는 대상. 남구·수영구·해운대구를 같은 축에서 비교한다. */
+export const SAMPLE_SIGUNGU = [
+  { lawdCd: '26290', sigungu: '남구' },
+  { lawdCd: '26500', sigungu: '수영구' },
+  { lawdCd: '26350', sigungu: '해운대구' },
+] as const;
 
 export interface ComplexSeed {
   complexId: string;
@@ -41,6 +53,12 @@ export interface ComplexSeed {
   /** 최근 24개월 누적 변동률(%). 지역·단지 특성을 반영한 표본값. */
   trendPct: number;
   areaVariants: number[];
+  /** 최근월 매매가 대비 전세가율(%). 전월세 표본을 만들 때 기준값으로 쓴다. */
+  jeonseRatioPct: number;
+  /** 최근 6개월에만 적용하는 추가 하락률(%). 급락 신호를 재현할 때 쓴다. */
+  recentDropPct?: number;
+  /** 의도적으로 넣는 이상 거래 표본. 해당 월 첫 거래 금액에 배수를 곱한다. */
+  anomalies?: Array<{ month: string; factor: number }>;
 }
 
 const COMPLEX_SEEDS: ComplexSeed[] = [
@@ -55,6 +73,7 @@ const COMPLEX_SEEDS: ComplexSeed[] = [
     anchorPriceKrw: 628_000_000,
     trendPct: 3.6,
     areaVariants: [59.94, 84.98, 101.97],
+    jeonseRatioPct: 69,
   },
   {
     complexId: 'MOLIT-26290-002',
@@ -67,6 +86,8 @@ const COMPLEX_SEEDS: ComplexSeed[] = [
     anchorPriceKrw: 410_000_000,
     trendPct: 2.1,
     areaVariants: [59.91, 84.97, 114.92],
+    jeonseRatioPct: 71,
+    anomalies: [{ month: '2026-07', factor: 0.84 }],
   },
   {
     complexId: 'MOLIT-26290-003',
@@ -79,6 +100,7 @@ const COMPLEX_SEEDS: ComplexSeed[] = [
     anchorPriceKrw: 478_000_000,
     trendPct: 4.8,
     areaVariants: [59.98, 84.99],
+    jeonseRatioPct: 67,
   },
   {
     complexId: 'MOLIT-26290-004',
@@ -91,6 +113,7 @@ const COMPLEX_SEEDS: ComplexSeed[] = [
     anchorPriceKrw: 455_000_000,
     trendPct: 5.4,
     areaVariants: [59.98, 74.95],
+    jeonseRatioPct: 78,
   },
   {
     complexId: 'MOLIT-26290-005',
@@ -101,8 +124,11 @@ const COMPLEX_SEEDS: ComplexSeed[] = [
     households: 693,
     representativeAreaM2: 84.94,
     anchorPriceKrw: 269_000_000,
-    trendPct: -1.2,
+    trendPct: -2.4,
     areaVariants: [59.93, 84.94],
+    jeonseRatioPct: 82,
+    recentDropPct: -7,
+    anomalies: [{ month: '2026-08', factor: 0.87 }],
   },
   {
     complexId: 'MOLIT-26290-006',
@@ -115,6 +141,7 @@ const COMPLEX_SEEDS: ComplexSeed[] = [
     anchorPriceKrw: 810_000_000,
     trendPct: 2.9,
     areaVariants: [59.96, 84.97, 101.94],
+    jeonseRatioPct: 64,
   },
   {
     complexId: 'MOLIT-26290-007',
@@ -127,6 +154,7 @@ const COMPLEX_SEEDS: ComplexSeed[] = [
     anchorPriceKrw: 599_000_000,
     trendPct: 1.4,
     areaVariants: [59.95, 84.99],
+    jeonseRatioPct: 68,
   },
   {
     complexId: 'MOLIT-26290-008',
@@ -139,6 +167,8 @@ const COMPLEX_SEEDS: ComplexSeed[] = [
     anchorPriceKrw: 918_000_000,
     trendPct: 3.1,
     areaVariants: [59.92, 84.96, 99.91],
+    jeonseRatioPct: 62,
+    anomalies: [{ month: '2026-06', factor: 0.79 }],
   },
   {
     complexId: 'MOLIT-26290-009',
@@ -151,6 +181,7 @@ const COMPLEX_SEEDS: ComplexSeed[] = [
     anchorPriceKrw: 720_000_000,
     trendPct: 6.2,
     areaVariants: [59.94, 84.98],
+    jeonseRatioPct: 89,
   },
   {
     complexId: 'MOLIT-26350-001',
@@ -163,6 +194,7 @@ const COMPLEX_SEEDS: ComplexSeed[] = [
     anchorPriceKrw: 900_000_000,
     trendPct: 1.8,
     areaVariants: [59.97, 84.98, 126.93],
+    jeonseRatioPct: 66,
   },
   {
     complexId: 'MOLIT-26350-002',
@@ -175,6 +207,8 @@ const COMPLEX_SEEDS: ComplexSeed[] = [
     anchorPriceKrw: 1_050_000_000,
     trendPct: 2.4,
     areaVariants: [59.99, 84.99, 132.94],
+    jeonseRatioPct: 65,
+    anomalies: [{ month: '2026-08', factor: 1.16 }],
   },
   {
     complexId: 'MOLIT-26350-003',
@@ -187,6 +221,60 @@ const COMPLEX_SEEDS: ComplexSeed[] = [
     anchorPriceKrw: 800_000_000,
     trendPct: 0.7,
     areaVariants: [59.95, 84.97],
+    jeonseRatioPct: 70,
+  },
+  {
+    complexId: 'MOLIT-26500-001',
+    name: '광안자이',
+    legalDongCode: '2650051000',
+    lawdCd: '26500',
+    builtYear: 2020,
+    households: 971,
+    representativeAreaM2: 84.93,
+    anchorPriceKrw: 770_000_000,
+    trendPct: 3.4,
+    areaVariants: [59.92, 84.93, 99.98],
+    jeonseRatioPct: 68,
+  },
+  {
+    complexId: 'MOLIT-26500-002',
+    name: '삼익비치타운',
+    legalDongCode: '2650052000',
+    lawdCd: '26500',
+    builtYear: 1979,
+    households: 3060,
+    representativeAreaM2: 84.9,
+    anchorPriceKrw: 468_000_000,
+    trendPct: -0.9,
+    areaVariants: [59.88, 84.9, 111.95],
+    jeonseRatioPct: 84,
+    recentDropPct: -4.5,
+  },
+  {
+    complexId: 'MOLIT-26500-003',
+    name: '센텀비치푸르지오',
+    legalDongCode: '2650055000',
+    lawdCd: '26500',
+    builtYear: 2003,
+    households: 1082,
+    representativeAreaM2: 84.96,
+    anchorPriceKrw: 565_000_000,
+    trendPct: 1.2,
+    areaVariants: [59.94, 84.96, 101.92],
+    jeonseRatioPct: 77,
+  },
+  {
+    complexId: 'MOLIT-26500-004',
+    name: '부산더샵센텀포레',
+    legalDongCode: '2650055000',
+    lawdCd: '26500',
+    builtYear: 2014,
+    households: 1006,
+    representativeAreaM2: 84.98,
+    anchorPriceKrw: 925_000_000,
+    trendPct: 2.2,
+    areaVariants: [59.97, 84.98, 101.95],
+    jeonseRatioPct: 73,
   },
 ];
 
@@ -224,6 +312,16 @@ function jitter(rand: () => number, ratio: number): number {
   return 1 + (rand() * 2 - 1) * ratio;
 }
 
+/**
+ * 표본 면적을 고른다. 대표 면적 비중을 높게 두는 이유는, 전세가율·가격 추이를 같은 면적 구간에서
+ * 비교할 때 매달 표본이 비지 않게 하기 위해서다(화면 기본값이 84㎡ 구간이다).
+ */
+function pickArea(rand: () => number, seed: ComplexSeed, representativeWeight: number): number {
+  const others = seed.areaVariants.filter((area) => Math.abs(area - seed.representativeAreaM2) > 0.01);
+  if (others.length === 0 || rand() < representativeWeight) return seed.representativeAreaM2;
+  return others[Math.floor(rand() * others.length)] ?? seed.representativeAreaM2;
+}
+
 /** 평형별 평당가 보정: 소형은 평당가가 높고 대형은 낮은 경향을 반영한다. */
 function areaFactor(areaM2: number, representativeAreaM2: number): number {
   const ratio = areaM2 / representativeAreaM2;
@@ -243,10 +341,24 @@ export function buildSampleTransactions(endMonth = SAMPLE_END_MONTH, months = SA
       const drift = Math.pow(1 + monthlyTrend, monthIndex);
       const seasonal = 1 + Math.sin((monthIndex / 12) * Math.PI * 2) * 0.012;
       const volume = 2 + Math.floor(rand() * 3);
+      // 최근 6개월에만 적용하는 하락 보정. 6개월에 걸쳐 선형으로 반영한다.
+      const dropMonths = 6;
+      const dropProgress = seed.recentDropPct && monthIndex >= months - dropMonths
+        ? Math.min(1, (monthIndex - (months - dropMonths - 1)) / dropMonths)
+        : 0;
+      const dropFactor = seed.recentDropPct ? 1 + (seed.recentDropPct / 100) * dropProgress : 1;
+      const anomaly = seed.anomalies?.find((row) => row.month === month);
 
       for (let i = 0; i < volume; i += 1) {
-        const areaM2 = seed.areaVariants[Math.floor(rand() * seed.areaVariants.length)] ?? seed.representativeAreaM2;
-        const ppp = anchorPpp * drift * seasonal * areaFactor(areaM2, seed.representativeAreaM2) * jitter(rand, 0.035);
+        const areaM2 = pickArea(rand, seed, 0.55);
+        const ppp =
+          anchorPpp *
+          drift *
+          seasonal *
+          areaFactor(areaM2, seed.representativeAreaM2) *
+          jitter(rand, 0.035) *
+          dropFactor *
+          (anomaly && i === 0 ? anomaly.factor : 1);
         const priceKrw = Math.round((ppp * (areaM2 / 3.305785)) / 10_000) * 10_000;
         const day = 2 + Math.floor(rand() * 26);
         const floor = 1 + Math.floor(rand() * 24);
@@ -510,6 +622,7 @@ export interface SampleDataset {
   regions: Region[];
   complexes: ApartmentComplex[];
   transactions: AptTransaction[];
+  rentTransactions: AptRentTransaction[];
   macro: MacroIndicator[];
   pipelineRuns: PipelineRun[];
   runTasks: PipelineRunTask[];
@@ -518,10 +631,12 @@ export interface SampleDataset {
 }
 
 export function buildSampleDataset(): SampleDataset {
+  const transactions = buildSampleTransactions();
   return {
     regions: SAMPLE_REGIONS,
     complexes: SAMPLE_COMPLEXES,
-    transactions: buildSampleTransactions(),
+    transactions,
+    rentTransactions: buildSampleRentTransactions(),
     macro: buildSampleMacro(),
     pipelineRuns: buildSamplePipelineRuns(),
     runTasks: buildSampleRunTasks(),
@@ -532,6 +647,90 @@ export function buildSampleDataset(): SampleDataset {
 
 export function sampleComplexSeed(complexId: string): ComplexSeed | undefined {
   return COMPLEX_SEEDS.find((seed) => seed.complexId === complexId);
+}
+
+/**
+ * 전월세 표본.
+ *
+ * 전세 보증금은 같은 시점의 매매 기준가(추세선)에 단지 전세가율을 곱해 만들고,
+ * 일부 계약은 보증금+월세 형태로 섞는다. 매매 표본에 넣은 급락·이상치를 전세가에 반영하지 않으므로,
+ * 매매가가 빠지는 단지에서는 전세가율이 자연스럽게 올라간다(실제 관측과 같은 방향).
+ * 실제 신고된 전월세 계약이 아니라 전세가율·리스크 화면을 검증하는 표본이다.
+ */
+export function buildSampleRentTransactions(
+  months = SAMPLE_MONTHS,
+): AptRentTransaction[] {
+  const monthList = recentMonths(SAMPLE_END_MONTH, months);
+  const rows: AptRentTransaction[] = [];
+
+  for (const seed of COMPLEX_SEEDS) {
+    const anchorPpp = seed.anchorPriceKrw / (seed.representativeAreaM2 / 3.305785);
+    const monthlyTrend = Math.pow(1 + seed.trendPct / 100, 1 / months) - 1;
+    const dong = SAMPLE_REGIONS.find((region) => region.legalDongCode === seed.legalDongCode)?.dong ?? '';
+
+    monthList.forEach((month, monthIndex) => {
+      const rand = mulberry32(seedFromString(`rent:${seed.complexId}:${month}`));
+      const drift = Math.pow(1 + monthlyTrend, monthIndex);
+      const seasonal = 1 + Math.sin((monthIndex / 12) * Math.PI * 2) * 0.008;
+      // 전세가율 자체도 완만하게 움직인다(24개월에 ±2%p 수준).
+      const ratioDrift = 1 + ((monthIndex - months / 2) / months) * 0.04;
+      const contractCount = 2 + (rand() < 0.5 ? 1 : 0);
+
+      for (let i = 0; i < contractCount; i += 1) {
+        const areaM2 = pickArea(rand, seed, 0.7);
+        const referenceSaleKrw = anchorPpp * drift * seasonal * (areaM2 / 3.305785);
+        const jeonseDepositKrw = Math.round((referenceSaleKrw * (seed.jeonseRatioPct / 100) * ratioDrift * jitter(rand, 0.018)) / 10_000) * 10_000;
+        const isMonthly = rand() < 0.18;
+        const depositKrw = isMonthly ? Math.round((jeonseDepositKrw * 0.4) / 10_000) * 10_000 : jeonseDepositKrw;
+        // 월세-전세 전환율 연 5% 수준을 12개월 월세로 나눈 근사치.
+        const monthlyRentKrw = isMonthly ? Math.round((jeonseDepositKrw * 0.6 * 0.05) / 12 / 10_000) * 10_000 : 0;
+        const day = 2 + Math.floor(rand() * 26);
+        const floor = 1 + Math.floor(rand() * 24);
+        const dealDate = `${month}-${String(day).padStart(2, '0')}`;
+        const contractType = isMonthly ? 'monthly' : 'jeonse';
+        const contractTermMonths = isMonthly ? 12 : 24;
+
+        rows.push({
+          rentHash: createRentHash({
+            lawdCd: seed.lawdCd,
+            legalDongCode: seed.legalDongCode,
+            aptName: seed.name,
+            jibun: '',
+            builtYear: seed.builtYear,
+            dealDate,
+            floor,
+            areaM2,
+            depositKrw,
+            monthlyRentKrw,
+            contractType,
+            contractTermMonths,
+          }),
+          lawdCd: seed.lawdCd,
+          legalDongCode: seed.legalDongCode,
+          dong,
+          aptName: seed.name,
+          complexId: seed.complexId,
+          jibun: '',
+          builtYear: seed.builtYear,
+          dealMonth: month,
+          dealDate,
+          floor,
+          areaM2: Number(areaM2.toFixed(2)),
+          depositKrw,
+          monthlyRentKrw,
+          contractType,
+          contractTermMonths,
+          renewalRequested: rand() < 0.12,
+          sourceId: SOURCE_IDS.molitAptRent,
+          asOfDate: `${month}-01`,
+          collectedAt: `${month}-28T03:10:00.000Z`,
+          sourceNote: null,
+        });
+      }
+    });
+  }
+
+  return rows.sort((a, b) => b.dealDate.localeCompare(a.dealDate));
 }
 
 /** 데모 화면의 필터 기본값. 2026-09 이후 최근 12개월. */

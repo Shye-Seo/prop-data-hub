@@ -1,5 +1,6 @@
-import { buildSampleTransactions, SOURCE_IDS } from '@prop/shared';
+import { buildSampleRentTransactions, buildSampleTransactions, SOURCE_IDS } from '@prop/shared';
 import { transactionsToMolitXml } from './molit-xml';
+import { rentsToMolitXml } from './molit-rent-xml';
 
 export interface FixtureTransportOptions {
   /** 항상 504로 실패시킬 (지역, 월) 조합. 부분 실패와 DLQ 경로를 재현한다. */
@@ -19,6 +20,7 @@ export interface FixtureTransport {
  */
 export function createFixtureTransport(options: FixtureTransportOptions = {}): FixtureTransport {
   const transactions = buildSampleTransactions();
+  const rents = buildSampleRentTransactions();
   const calls: Array<{ url: string; attempt: number }> = [];
   const attempts = new Map<string, number>();
 
@@ -60,6 +62,15 @@ export function createFixtureTransport(options: FixtureTransportOptions = {}): F
     if (isTransient && attempt === 1) return errorResponse(500, 'Internal Server Error');
 
     // 시군구 단위 응답이므로 법정동 구분 없이 해당 월 전체를 돌려준다.
+    if (parsed.pathname.includes('AptRent')) {
+      const scopedRents = rents.filter((row) => row.lawdCd === lawdCd && row.dealMonth === dealMonth);
+      const rentSlice = scopedRents.slice((pageNo - 1) * numOfRows, pageNo * numOfRows);
+      return new Response(
+        rentsToMolitXml(rentSlice, { totalCount: scopedRents.length, pageNo, numOfRows }),
+        { status: 200, headers: { 'content-type': 'application/xml; charset=utf-8' } },
+      );
+    }
+
     const scoped = transactions.filter((row) => row.lawdCd === lawdCd && row.dealMonth === dealMonth);
     const slice = scoped.slice((pageNo - 1) * numOfRows, pageNo * numOfRows);
 

@@ -201,44 +201,92 @@ interface BarChartProps {
   height?: number;
   color?: string;
   formatValue: (value: number) => string;
+  /** 축 라벨용 짧은 표기. 생략하면 값 크기에 따라 억/만 단위로 줄인다. */
+  formatAxis?: (value: number) => string;
   ariaLabel: string;
+  /** 막대 위에 값을 표시할지. 항목이 6개 이하일 때 읽기 쉽다. */
+  showValues?: boolean;
 }
 
-export function BarChart({ points, height = 160, color = '#12355f', formatValue, ariaLabel }: BarChartProps) {
+/** 의존성 없는 SVG 막대 차트. 항목 이름과 축 값을 함께 그려 표만 봐도 읽히게 한다. */
+export function BarChart({
+  points,
+  height = 170,
+  color = '#12355f',
+  formatValue,
+  formatAxis,
+  ariaLabel,
+  showValues = true,
+}: BarChartProps) {
+  const gradientId = useId().replace(/:/g, '');
   const innerWidth = WIDTH - PADDING.left - PADDING.right;
   const innerHeight = height - PADDING.top - PADDING.bottom;
   const max = Math.max(1, ...points.map((point) => point.value));
-  const barWidth = Math.max(2, innerWidth / points.length - 2);
+  const slot = points.length === 0 ? innerWidth : innerWidth / points.length;
+  const barWidth = Math.max(6, slot * 0.56);
+  const axisFormatter =
+    formatAxis ??
+    ((value: number) => {
+      if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(1)}억`;
+      if (value >= 10_000) return `${Math.round(value / 10_000).toLocaleString('ko-KR')}만`;
+      return String(Math.round(value));
+    });
+  const ticks = [1, 0.5, 0];
 
   return (
     <svg role="img" aria-label={ariaLabel} viewBox={`0 0 ${WIDTH} ${height}`} className="h-auto w-full">
+      <defs>
+        <linearGradient id={`${gradientId}-bar`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.95" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.72" />
+        </linearGradient>
+      </defs>
       <g transform={`translate(${PADDING.left},${PADDING.top})`}>
-        <line x1={0} x2={innerWidth} y1={innerHeight} y2={innerHeight} stroke="#e2e8f0" />
+        {ticks.map((ratio) => {
+          const value = max * ratio;
+          const y = innerHeight - ratio * innerHeight;
+          return (
+            <g key={ratio}>
+              <line x1={0} x2={innerWidth} y1={y} y2={y} stroke={ratio === 0 ? '#cbd5e1' : '#eef2f7'} strokeWidth={1} />
+              <text x={-10} y={y + 4} textAnchor="end" fontSize="9.5" fill="#94a3b8">
+                {axisFormatter(value)}
+              </text>
+            </g>
+          );
+        })}
         {points.map((point, index) => {
           const barHeight = (point.value / max) * innerHeight;
-          const x = (index / points.length) * innerWidth + 1;
+          const x = index * slot + (slot - barWidth) / 2;
           return (
             <g key={point.label}>
               <rect
                 x={x}
                 y={innerHeight - barHeight}
                 width={barWidth}
-                height={barHeight}
-                rx={2}
-                fill={color}
-                opacity={0.85}
+                height={Math.max(1, barHeight)}
+                rx={3}
+                fill={`url(#${gradientId}-bar)`}
               >
                 <title>{`${point.label} · ${formatValue(point.value)}`}</title>
               </rect>
+              {showValues && (
+                <text
+                  x={x + barWidth / 2}
+                  y={innerHeight - barHeight - 6}
+                  textAnchor="middle"
+                  fontSize="10"
+                  fontWeight="600"
+                  fill="#334155"
+                >
+                  {formatValue(point.value)}
+                </text>
+              )}
+              <text x={x + barWidth / 2} y={innerHeight + 16} textAnchor="middle" fontSize="10.5" fill="#475569">
+                {point.label}
+              </text>
             </g>
           );
         })}
-        <text x={-10} y={10} textAnchor="end" fontSize="9.5" fill="#94a3b8">
-          {formatValue(max)}
-        </text>
-        <text x={-10} y={innerHeight} textAnchor="end" fontSize="9.5" fill="#94a3b8">
-          0
-        </text>
       </g>
     </svg>
   );

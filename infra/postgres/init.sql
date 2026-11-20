@@ -33,6 +33,10 @@ VALUES
    'https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev',
    '이용허락범위 제한 없음', '매월 신고분 반영(계약일 기준, 통상 1~2개월 지연)',
    '계약 연월 기준. 수집 시점과 계약 시점을 분리해 저장한다.', true),
+  ('molit_apt_rent', '아파트 전월세 실거래가', '국토교통부 (공공데이터포털)',
+   'https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent',
+   '이용허락범위 제한 없음', '매월 신고분 반영(계약일 기준, 통상 1~2개월 지연)',
+   '계약 연월 기준. 보증금·월세를 함께 저장하고 전세가율은 전세 계약만 집계한다.', true),
   ('ecos_rates', '기준금리·주택담보대출 금리', '한국은행 ECOS Open API',
    'https://ecos.bok.or.kr/api/StatisticSearch', '한국은행 공공데이터 이용약관', '월간(기준금리는 변경 시)',
    '월간 지표는 해당 월 말일을 기준일로 둔다.', true),
@@ -120,6 +124,50 @@ CREATE INDEX IF NOT EXISTS apt_transactions_complex_month_idx
   ON apt_transactions (complex_id, deal_month);
 CREATE INDEX IF NOT EXISTS apt_transactions_search_gin
   ON apt_transactions USING gin (search_doc);
+
+-- 아파트 전월세 실거래 (국토교통부 getRTMSDataSvcAptRent).
+-- 전세가율은 이 테이블의 전세 계약과 apt_transactions를 같은 면적 구간에서 매칭해 계산한다.
+CREATE TABLE IF NOT EXISTS apt_rent_transactions (
+  rent_hash            char(64) PRIMARY KEY,
+  lawd_cd              char(5) NOT NULL,
+  legal_dong_code      char(10) NOT NULL REFERENCES regions (legal_dong_code) ON UPDATE CASCADE,
+  apt_name             text NOT NULL,
+  complex_id           text REFERENCES apartment_complexes (complex_id) ON UPDATE CASCADE,
+  jibun                text,
+  built_year           smallint,
+  deal_month           char(7) NOT NULL,
+  deal_date            date NOT NULL,
+  floor                smallint,
+  area_m2              numeric(7, 2) NOT NULL,
+  deposit_krw          bigint NOT NULL,
+  monthly_rent_krw     integer NOT NULL DEFAULT 0,
+  contract_type        text NOT NULL,
+  contract_term_months smallint,
+  renewal_requested    boolean NOT NULL DEFAULT false,
+  source_id            text NOT NULL REFERENCES ingestion_sources (source_id),
+  as_of_date           date NOT NULL,
+  collected_at         timestamptz NOT NULL,
+  source_note          text,
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  updated_at           timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT apt_rent_transactions_deposit_positive CHECK (deposit_krw > 0),
+  CONSTRAINT apt_rent_transactions_area_positive CHECK (area_m2 > 0),
+  CONSTRAINT apt_rent_transactions_monthly_rent_nonnegative CHECK (monthly_rent_krw >= 0),
+  CONSTRAINT apt_rent_transactions_contract_type CHECK (contract_type IN ('jeonse', 'monthly')),
+  CONSTRAINT apt_rent_transactions_jeonse_has_no_rent CHECK (contract_type <> 'jeonse' OR monthly_rent_krw = 0),
+  CONSTRAINT apt_rent_transactions_deal_month_format CHECK (deal_month ~ '^[0-9]{4}-[0-9]{2}$'),
+  CONSTRAINT apt_rent_transactions_deal_date_matches_month CHECK (to_char(deal_date, 'YYYY-MM') = deal_month)
+);
+
+CREATE INDEX IF NOT EXISTS apt_rent_transactions_deal_date_brin
+  ON apt_rent_transactions USING brin (deal_date) WITH (pages_per_range = 32);
+CREATE INDEX IF NOT EXISTS apt_rent_transactions_lawd_month_idx
+  ON apt_rent_transactions (lawd_cd, deal_month);
+CREATE INDEX IF NOT EXISTS apt_rent_transactions_complex_month_idx
+  ON apt_rent_transactions (complex_id, deal_month);
+-- 전세가율 계산은 전세 계약만 읽으므로 부분 인덱스를 둔다.
+CREATE INDEX IF NOT EXISTS apt_rent_transactions_jeonse_idx
+  ON apt_rent_transactions (complex_id, deal_month, area_m2) WHERE contract_type = 'jeonse';
 
 CREATE TABLE IF NOT EXISTS macro_indicators (
   indicator_code text NOT NULL,
@@ -345,6 +393,48 @@ WITH NO DATA;
 CREATE UNIQUE INDEX IF NOT EXISTS mv_complex_monthly_pk
   ON mv_complex_monthly (complex_id, deal_month);
 
+-- 전세가율: 같은 단지·월·면적 구간(5㎡)에서 전세 평당가와 매매 평당가를 매칭해 비율을 낸다.
+-- 화면(shared risk.ts)과 API가 같은 정의를 쓰도록 계산식을 여기에 고정했다.
+CREATE OR REPLACE VIEW v_jeonse_ratio_monthly AS
+WITH sale AS (
+  SELECT
+    complex_id,
+    deal_month,
+    width_bucket(area_m2, 0, 200, 40) AS area_bucket,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY price_per_pyeong) AS sale_ppp,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY price_krw)::bigint AS sale_median_krw,
+    count(*) AS sale_samples
+  FROM apt_transactions
+  WHERE canceled = false AND complex_id IS NOT NULL
+  GROUP BY complex_id, deal_month, width_bucket(area_m2, 0, 200, 40)
+), rent AS (
+  SELECT
+    complex_id,
+    deal_month,
+    width_bucket(area_m2, 0, 200, 40) AS area_bucket,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY deposit_krw / (area_m2 / 3.305785)) AS jeonse_ppp,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY deposit_krw)::bigint AS jeonse_median_krw,
+    count(*) AS jeonse_samples
+  FROM apt_rent_transactions
+  WHERE contract_type = 'jeonse' AND complex_id IS NOT NULL
+  GROUP BY complex_id, deal_month, width_bucket(area_m2, 0, 200, 40)
+)
+SELECT
+  r.complex_id,
+  c.name AS complex_name,
+  c.lawd_cd,
+  c.legal_dong_code,
+  r.deal_month,
+  r.area_bucket,
+  round((r.jeonse_ppp / NULLIF(s.sale_ppp, 0) * 100)::numeric, 1) AS jeonse_ratio_pct,
+  r.jeonse_median_krw,
+  s.sale_median_krw,
+  r.jeonse_samples,
+  s.sale_samples
+FROM rent r
+JOIN sale s ON s.complex_id = r.complex_id AND s.deal_month = r.deal_month AND s.area_bucket = r.area_bucket
+JOIN apartment_complexes c ON c.complex_id = r.complex_id;
+
 -- 수집 품질 점검: 기준일이 계약월과 어긋나거나, 보정·해제 표시가 있는 건을 한눈에 본다.
 CREATE OR REPLACE VIEW v_ingestion_quality AS
 SELECT
@@ -358,7 +448,6 @@ SELECT
   max(deal_month) AS newest_deal_month
 FROM apt_transactions
 GROUP BY source_id, date_trunc('month', collected_at)::date;
-
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql AS $$
@@ -375,6 +464,11 @@ CREATE TRIGGER apt_transactions_set_updated_at
 DROP TRIGGER IF EXISTS macro_indicators_set_updated_at ON macro_indicators;
 CREATE TRIGGER macro_indicators_set_updated_at
   BEFORE UPDATE ON macro_indicators
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS apt_rent_transactions_set_updated_at ON apt_rent_transactions;
+CREATE TRIGGER apt_rent_transactions_set_updated_at
+  BEFORE UPDATE ON apt_rent_transactions
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 COMMIT;

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { riskLevelLabel, type RiskLevel } from '@prop/shared';
 
 export function Card({
   children,
@@ -88,8 +89,22 @@ export function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+/** 전세가율·리스크 단계 배지. 같은 단계가 화면마다 같은 색으로 보이게 한다. */
+export function RiskBadge({ level, children }: { level: RiskLevel; children?: ReactNode }) {
+  const styles: Record<RiskLevel, string> = {
+    low: 'border-slate-200 bg-slate-50 text-slate-600',
+    moderate: 'border-amber-200 bg-amber-50 text-amber-800',
+    high: 'border-orange-300 bg-orange-50 text-orange-800',
+    critical: 'border-rose-300 bg-rose-50 text-rose-700',
+  };
   return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${styles[level]}`}>
+      {children ?? riskLevelLabel(level)}
+    </span>
+  );
+}
+
+export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {  return (
     <label className="block">
       <span className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-600">
         {label}

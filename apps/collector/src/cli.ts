@@ -4,7 +4,14 @@ import { HttpClient } from './http';
 import { TokenBucketLimiter } from './rate-limiter';
 import { MemorySink, type IngestionSink } from './sink';
 import { PgSink } from './db/pg-sink';
-import { runEcosIngestion, runMolitIngestion, retryMolitDeadLetter, type PipelineDeps } from './pipeline';
+import {
+  runEcosIngestion,
+  runMolitIngestion,
+  runMolitRentIngestion,
+  retryMolitDeadLetter,
+  retryMolitRentDeadLetter,
+  type PipelineDeps,
+} from './pipeline';
 import { createFixtureTransport } from './fixtures/transport';
 
 /**
@@ -12,6 +19,7 @@ import { createFixtureTransport } from './fixtures/transport';
  *
  *   pnpm --filter @prop/collector once                 # 로컬 시뮬레이션(샘플 데이터, 키 불필요)
  *   pnpm --filter @prop/collector once -- --live       # 실제 공공데이터 API 호출(키 필요)
+ *   pnpm --filter @prop/collector once -- --rent      # 전월세 실거래도 함께 수집(전세가율 원천)
  *   pnpm --filter @prop/collector once -- --retry-dlq  # 시뮬레이션에서 실패한 건 재시도
  *
  * 환경변수는 .env.example을 참고한다.
@@ -22,6 +30,8 @@ interface CliOptions {
   months: number;
   lawdCds: string[];
   json: boolean;
+  /** 전월세 수집도 함께 실행한다. 전세가율 화면은 이 결과를 읽는다. */
+  rent: boolean;
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -36,8 +46,9 @@ function parseArgs(argv: string[]): CliOptions {
     live: argv.includes('--live'),
     retryDlq: argv.includes('--retry-dlq'),
     months: Number(getValue('--months') ?? 6),
-    lawdCds: (getValue('--lawdCd') ?? '26290,26350').split(',').map((value) => value.trim()),
+    lawdCds: (getValue('--lawdCd') ?? '26290,26500,26350').split(',').map((value) => value.trim()),
     json: argv.includes('--json'),
+    rent: argv.includes('--rent'),
   };
 }
 
@@ -66,6 +77,7 @@ async function main(): Promise<void> {
   const logger = options.json ? undefined : (message: string) => console.log(message);
 
   const molitSource = SOURCE_CATALOG.find((source) => source.sourceId === 'molit_apt_trade')!;
+  const molitRentSource = SOURCE_CATALOG.find((source) => source.sourceId === 'molit_apt_rent')!;
   const ecosSource = SOURCE_CATALOG.find((source) => source.sourceId === 'ecos_rates')!;
   const fixture = createFixtureTransport({
     hardFailures: options.live ? [] : [{ lawdCd: '26350', dealMonth: '2026-08' }],
@@ -103,6 +115,22 @@ async function main(): Promise<void> {
     deps,
   );
 
+  const rentResult = options.rent
+    ? await runMolitRentIngestion(
+        {
+          endpoint: options.live ? molitRentSource.endpoint : 'https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent',
+          serviceKey: options.live ? requireEnv('MOLIT_SERVICE_KEY') : 'fixture-key',
+          regions: SAMPLE_REGIONS,
+          lawdCds: options.lawdCds,
+          endMonth: SAMPLE_END_MONTH,
+          months: options.months,
+          jobType: 'incremental',
+          triggeredBy: options.live ? 'cli:live' : 'cli:fixture',
+        },
+        deps,
+      )
+    : null;
+
   const ecosResult = await runEcosIngestion(
     {
       endpoint: options.live ? ecosSource.endpoint : 'https://ecos.bok.or.kr/api',
@@ -119,11 +147,27 @@ async function main(): Promise<void> {
   if (options.retryDlq && sink instanceof MemorySink) {
     for (const entry of sink.deadLetters.values()) {
       if (entry.resolvedAt) continue;
-      const result = await retryMolitDeadLetter(entry, {
-        endpoint: 'https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev',
-        serviceKey: 'fixture-key',
-        regions: SAMPLE_REGIONS,
-      }, { ...deps, http: new HttpClient({ fetchImpl: createFixtureTransport().fetch }) });
+      const isRent = entry.sourceId === 'molit_apt_rent';
+      const retryDeps = { ...deps, http: new HttpClient({ fetchImpl: createFixtureTransport().fetch }) };
+      const result = isRent
+        ? await retryMolitRentDeadLetter(
+            entry,
+            {
+              endpoint: 'https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent',
+              serviceKey: 'fixture-key',
+              regions: SAMPLE_REGIONS,
+            },
+            retryDeps,
+          )
+        : await retryMolitDeadLetter(
+            entry,
+            {
+              endpoint: 'https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev',
+              serviceKey: 'fixture-key',
+              regions: SAMPLE_REGIONS,
+            },
+            retryDeps,
+          );
       retryResult.push({ id: entry.id, resolved: result.resolved, error: result.error });
     }
   }
@@ -142,6 +186,17 @@ async function main(): Promise<void> {
       dealCount: molitResult.dealCount,
       canceledCount: molitResult.canceledCount,
     },
+    rent: rentResult
+      ? {
+          runId: rentResult.run.runId,
+          status: rentResult.run.status,
+          tasks: `${rentResult.run.taskSucceeded}/${rentResult.run.taskTotal} succeeded`,
+          recordsUpserted: rentResult.run.recordsUpserted,
+          recordsSkipped: rentResult.run.recordsSkipped,
+          jeonseCount: rentResult.jeonseCount,
+          monthlyCount: rentResult.monthlyCount,
+        }
+      : null,
     ecos: {
       runId: ecosResult.run.runId,
       status: ecosResult.run.status,
@@ -160,6 +215,11 @@ async function main(): Promise<void> {
     console.log(`모드: ${summary.mode} · 스토어: ${summary.sink}`);
     console.log(`MOLIT ${summary.molit.runId}: ${summary.molit.status} (${summary.molit.tasks}, ${summary.molit.recordsUpserted}건 반영, 재시도 ${summary.molit.retries})`);
     if (summary.molit.errorSummary) console.log(`실패 요약: ${summary.molit.errorSummary}`);
+    if (summary.rent) {
+      console.log(
+        `MOLIT 전월세 ${summary.rent.runId}: ${summary.rent.status} (${summary.rent.tasks}, ${summary.rent.recordsUpserted}건 반영, 전세 ${summary.rent.jeonseCount}·월세 ${summary.rent.monthlyCount})`,
+      );
+    }
     console.log(`ECOS ${summary.ecos.runId}: ${summary.ecos.status} (${summary.ecos.recordsUpserted}건 반영)`);
     console.log(`DLQ: ${Array.isArray(summary.deadLetters) ? summary.deadLetters.length : 'API에서 조회'}건`);
     if (retryResult.length > 0) console.log(`재시도: ${JSON.stringify(retryResult)}`);

@@ -29,6 +29,30 @@ const complexCompareProps = z.object({
   basis: z.enum(['price_per_pyeong', 'recent_price', 'volume']).optional(),
 });
 
+const listingClickProps = z.object({
+  complexId: z.string().min(1).max(64),
+  aptName: z.string().min(1).max(80),
+  dealHash: z.string().max(80).optional(),
+  priceKrw: z.number().int().positive(),
+  areaM2: z.number().positive().max(500),
+  source: z.enum(['explore_table', 'overview', 'compare', 'risk']),
+  jeonseRatioPct: z.number().min(0).max(200).optional(),
+});
+
+const listingSaveProps = z.object({
+  complexId: z.string().min(1).max(64),
+  aptName: z.string().min(1).max(80),
+  action: z.enum(['add', 'remove']),
+  savedCount: z.number().int().min(0).max(50),
+  priceKrw: z.number().int().positive().optional(),
+});
+
+const apiDocMockProps = z.object({
+  endpoint: z.string().min(1).max(120),
+  method: z.enum(['get', 'post']),
+  status: z.number().int().min(100).max(599),
+});
+
 const rateScenarioProps = z.object({
   priceKrw: z.number().int().positive(),
   loanKrw: z.number().int().nonnegative(),
@@ -56,6 +80,9 @@ export const EVENT_PROP_SCHEMAS = {
   page_view: pageViewProps,
   region_filter_change: regionFilterProps,
   complex_compare_add: complexCompareProps,
+  listing_click: listingClickProps,
+  listing_save: listingSaveProps,
+  api_doc_mock_run: apiDocMockProps,
   rate_scenario_adjust: rateScenarioProps,
   pipeline_source_inspect: pipelineSourceProps,
   funnel_step_complete: funnelStepProps,
@@ -146,6 +173,36 @@ export const EVENT_CATALOG: EventDefinition[] = [
     props: ['complexIds', 'addedComplexId', 'compareCount', 'basis'],
     kpi: ['비교 진입률', '단지별 비교 채택', '비교 후 리포트 저장률'],
     retentionDays: 400,
+    owner: '프로덕트 분석',
+  },
+  {
+    name: 'listing_click',
+    label: '매물 클릭',
+    description: '실거래·비교·리스크 화면에서 단지(거래) 상세를 연 시점. 관심도가 가장 직접적으로 드러나는 행동이다.',
+    trigger: '목록 행·단지 카드를 눌러 상세를 열 때 1회',
+    props: ['complexId', 'aptName', 'dealHash', 'priceKrw', 'areaM2', 'source', 'jeonseRatioPct'],
+    kpi: ['단지별 클릭 수', '목록 대비 상세 진입률', '클릭 후 관심 등록 전환'],
+    retentionDays: 400,
+    owner: '프로덕트 분석',
+  },
+  {
+    name: 'listing_save',
+    label: '관심 등록',
+    description: '관심 단지에 넣거나 뺀 시점. 세션 퍼널과 별도로 비교·상담으로 이어지는 중간 신호로 본다.',
+    trigger: '관심 등록 버튼을 눌러 상태가 바뀔 때',
+    props: ['complexId', 'aptName', 'action', 'savedCount', 'priceKrw'],
+    kpi: ['관심 등록 세션', '단지별 관심 수', '관심 등록 후 비교 진행률'],
+    retentionDays: 400,
+    owner: '프로덕트 분석',
+  },
+  {
+    name: 'api_doc_mock_run',
+    label: 'API 문서 실행',
+    description: 'API 문서 화면에서 엔드포인트 예시 응답을 실행한 시점. 개발자·면접관이 어떤 API를 확인했는지 본다.',
+    trigger: 'Mock 응답 실행 버튼을 눌러 응답을 받을 때',
+    props: ['endpoint', 'method', 'status'],
+    kpi: ['문서 사용 세션', '엔드포인트별 실행 수', '응답 오류율'],
+    retentionDays: 180,
     owner: '프로덕트 분석',
   },
   {

@@ -264,4 +264,72 @@ describe('PostgreSQL 스키마와 PgStore (PGlite)', () => {
     expect(Number(rows[0]?.canceled_rows)).toBe(1);
     expect(Number(rows[0]?.annotated_rows)).toBe(1);
   });
+
+  it('전월세 테이블이 제약으로 잘못된 계약을 막는다', async () => {
+    const insert = `
+      INSERT INTO apt_rent_transactions (
+        rent_hash, lawd_cd, legal_dong_code, apt_name, complex_id, jibun, built_year, deal_month, deal_date,
+        floor, area_m2, deposit_krw, monthly_rent_krw, contract_type, contract_term_months, renewal_requested,
+        source_id, as_of_date, collected_at, source_note
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+    `;
+    await db.query(insert, [
+      'r'.repeat(64), '26290', '2629051000', '문현베스티움', 'MOLIT-26290-001', '806', 2019, '2026-09', '2026-09-14',
+      9, 84.98, 428_000_000, 0, 'jeonse', 24, false, 'molit_apt_rent', '2026-09-01', '2026-10-01T03:00:00Z', null,
+    ]);
+    await db.query(insert, [
+      's'.repeat(64), '26290', '2629051000', '문현베스티움', 'MOLIT-26290-001', '806', 2019, '2026-09', '2026-09-08',
+      17, 59.94, 300_000_000, 950_000, 'monthly', 12, true, 'molit_apt_rent', '2026-09-01', '2026-10-01T03:00:00Z', null,
+    ]);
+
+    await expect(
+      db.query(insert, [
+        't'.repeat(64), '26290', '2629051000', '문현베스티움', 'MOLIT-26290-001', '806', 2019, '2026-09', '2026-09-09',
+        5, 84.98, 400_000_000, 500_000, 'jeonse', 24, false, 'molit_apt_rent', '2026-09-01', '2026-10-01T03:00:00Z', null,
+      ]),
+    ).rejects.toThrow(/apt_rent_transactions_jeonse_has_no_rent/);
+
+    const { rows } = await db.query<{ count: string }>('SELECT count(*)::text AS count FROM apt_rent_transactions');
+    expect(Number(rows[0]!.count)).toBe(2);
+  });
+
+  it('전세가율 뷰가 같은 면적 구간의 전세·매매를 매칭한다', async () => {
+    const { rows } = await db.query<{
+      complex_id: string;
+      deal_month: string;
+      area_bucket: string;
+      jeonse_ratio_pct: string;
+      jeonse_samples: string;
+    }>(
+      `SELECT complex_id, deal_month, area_bucket::text AS area_bucket, jeonse_ratio_pct::text, jeonse_samples::text
+         FROM v_jeonse_ratio_monthly ORDER BY deal_month, area_bucket`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.complex_id).toBe('MOLIT-26290-001');
+    expect(rows[0]?.deal_month).toBe('2026-09');
+    expect(Number(rows[0]?.area_bucket)).toBe(17);
+    // 84.98㎡ 전세(428,000,000) ÷ 같은 달 84.98㎡ 매매 중위(845,000,000) ≈ 50.6%
+    expect(Number(rows[0]?.jeonse_ratio_pct)).toBeGreaterThan(49);
+    expect(Number(rows[0]?.jeonse_ratio_pct)).toBeLessThan(52);
+    expect(Number(rows[0]?.jeonse_samples)).toBe(1);
+  });
+
+  it('PgStore가 전월세 목록과 월별 전세가율을 조회한다', async () => {
+    const page = await store.listRentTransactions({ lawdCd: '26290', limit: 10, offset: 0 });
+    expect(page.total).toBe(2);
+    expect(page.rows[0]?.aptName).toBe('문현베스티움');
+    expect(page.rows.some((row) => row.contractType === 'monthly' && row.monthlyRentKrw === 950_000)).toBe(true);
+    expect(page.rows.every((row) => row.dong === '문현동')).toBe(true);
+
+    const jeonseOnly = await store.listRentTransactions({ contractType: 'jeonse', limit: 10, offset: 0 });
+    expect(jeonseOnly.total).toBe(1);
+    expect(jeonseOnly.rows[0]?.monthlyRentKrw).toBe(0);
+
+    const series = await store.jeonseRatioMonthly({ lawdCd: '26290', months: 3 });
+    expect(series).toHaveLength(3);
+    expect(series.at(-1)?.month).toBe('2026-09');
+    expect(series.at(-1)?.ratioPct).toBeGreaterThan(49);
+    expect(series.at(-1)?.complexCount).toBe(1);
+    expect(series[0]?.ratioPct).toBe(0);
+  });
 });

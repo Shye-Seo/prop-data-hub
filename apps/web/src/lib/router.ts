@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 
-export type RouteKey = 'overview' | 'explore' | 'compare' | 'rate' | 'pipeline' | 'events' | 'dictionary';
+export type RouteKey =
+  | 'overview'
+  | 'explore'
+  | 'compare'
+  | 'risk'
+  | 'rate'
+  | 'pipeline'
+  | 'events'
+  | 'api'
+  | 'dictionary';
 
 export interface RouteDefinition {
   key: RouteKey;
@@ -12,10 +21,12 @@ export interface RouteDefinition {
 export const ROUTES: RouteDefinition[] = [
   { key: 'overview', label: '시장 개요', short: '개요', description: '지역별 중위가·거래량·금리 지표' },
   { key: 'explore', label: '실거래 탐색', short: '실거래', description: '조건별 실거래 필터와 평당가' },
-  { key: 'compare', label: '단지 비교', short: '비교', description: '최대 3개 단지의 가격·거래량 비교' },
+  { key: 'compare', label: '단지 비교', short: '비교', description: '최대 3개 단지의 가격·전세가율 비교' },
+  { key: 'risk', label: '구별 리스크', short: '리스크', description: '남구·수영구·해운대구 전세가율과 이상 거래' },
   { key: 'rate', label: '금리 민감도', short: '금리', description: '대출 조건별 월 상환액과 DSR' },
   { key: 'pipeline', label: '수집 파이프라인', short: '수집', description: '실행 이력·출처·기준일·DLQ' },
   { key: 'events', label: '행동 이벤트', short: '이벤트', description: '퍼널·이벤트 스트림 실시간 확인' },
+  { key: 'api', label: 'API 문서', short: 'API', description: 'OpenAPI 명세·Mock 실행·스키마' },
   { key: 'dictionary', label: '지표 정의서', short: '정의', description: '이벤트·퍼널·품질 규칙' },
 ];
 

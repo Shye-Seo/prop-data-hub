@@ -1,14 +1,17 @@
 import type { Queryable } from './queryable';
 import {
   MACRO_UPSERT_SQL,
+  RENT_UPSERT_SQL,
   TRANSACTION_UPSERT_SQL,
   macroParams,
+  rentParams,
   transactionParams,
   type IngestionSink,
   type UpsertResult,
 } from '../sink';
 import type {
   ApartmentComplex,
+  AptRentTransaction,
   AptTransaction,
   DeadLetterEntry,
   MacroIndicator,
@@ -69,6 +72,16 @@ export class PgSink implements IngestionSink {
     const result: UpsertResult = { inserted: 0, updated: 0 };
     for (const row of rows) {
       const { rows: returning } = await this.db.query<{ inserted: boolean }>(TRANSACTION_UPSERT_SQL, transactionParams(row));
+      if (returning[0]?.inserted) result.inserted += 1;
+      else result.updated += 1;
+    }
+    return result;
+  }
+
+  async upsertRentTransactions(rows: AptRentTransaction[]): Promise<UpsertResult> {
+    const result: UpsertResult = { inserted: 0, updated: 0 };
+    for (const row of rows) {
+      const { rows: returning } = await this.db.query<{ inserted: boolean }>(RENT_UPSERT_SQL, rentParams(row));
       if (returning[0]?.inserted) result.inserted += 1;
       else result.updated += 1;
     }

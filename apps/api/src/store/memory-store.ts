@@ -1,10 +1,13 @@
 import {
   aggregateMonthly,
+  aggregateRatioSeries,
   buildSampleDataset,
   isCountableTransaction,
+  jeonseRatioSeries,
   recentMonths,
   shiftMonth,
   type ApartmentComplex,
+  type AptRentTransaction,
   type AptTransaction,
   type BehaviorEventRecord,
   type DeadLetterEntry,
@@ -19,6 +22,9 @@ import type {
   EventFilter,
   EventInsertResult,
   EventStats,
+  JeonseRatioRow,
+  RentFilter,
+  RentPage,
   Store,
   TransactionFilter,
   TransactionPage,
@@ -29,6 +35,7 @@ export class MemoryStore implements Store {
   readonly kind = 'memory' as const;
 
   private transactions: AptTransaction[];
+  private readonly rentTransactions: AptRentTransaction[];
   private readonly regions: Region[];
   private readonly complexes: ApartmentComplex[];
   private readonly macro: MacroIndicator[];
@@ -41,6 +48,7 @@ export class MemoryStore implements Store {
 
   constructor(seed = buildSampleDataset()) {
     this.transactions = [...seed.transactions];
+    this.rentTransactions = seed.rentTransactions;
     this.regions = seed.regions;
     this.complexes = seed.complexes;
     this.macro = seed.macro;
@@ -108,6 +116,53 @@ export class MemoryStore implements Store {
       this.transactions.filter((row) => row.complexId === complexId),
       monthList,
     );
+  }
+
+  async listRentTransactions(filter: RentFilter): Promise<RentPage> {
+    const filtered = this.rentTransactions
+      .filter((row) => (filter.lawdCd ? row.lawdCd === filter.lawdCd : true))
+      .filter((row) => (filter.legalDongCode ? row.legalDongCode === filter.legalDongCode : true))
+      .filter((row) => (filter.complexId ? row.complexId === filter.complexId : true))
+      .filter((row) => (filter.contractType ? row.contractType === filter.contractType : true))
+      .filter((row) => (filter.fromMonth ? row.dealMonth >= filter.fromMonth : true))
+      .filter((row) => (filter.toMonth ? row.dealMonth <= filter.toMonth : true))
+      .sort((a, b) => b.dealDate.localeCompare(a.dealDate) || b.rentHash.localeCompare(a.rentHash));
+    return { total: filtered.length, rows: filtered.slice(filter.offset, filter.offset + filter.limit) };
+  }
+
+  /**
+   * 월별 전세가율. 단지별로 같은 면적 구간(대표 면적)의 비율을 구한 뒤 월마다 중위값을 낸다.
+   * PostgreSQL 구현은 v_jeonse_ratio_monthly 뷰를 쓴다(정의는 init.sql 참고).
+   */
+  async jeonseRatioMonthly(params: {
+    lawdCd?: string;
+    legalDongCode?: string;
+    complexId?: string;
+    months: number;
+  }): Promise<JeonseRatioRow[]> {
+    const monthList = this.resolveMonths(params.months);
+    const complexes = this.complexes.filter((complex) => {
+      if (params.complexId) return complex.complexId === params.complexId;
+      if (params.legalDongCode) return complex.legalDongCode === params.legalDongCode;
+      if (params.lawdCd) return complex.lawdCd === params.lawdCd;
+      return true;
+    });
+    const seriesList = complexes.map((complex) =>
+      jeonseRatioSeries(
+        this.rentTransactions.filter((row) => row.complexId === complex.complexId),
+        this.transactions.filter((row) => row.complexId === complex.complexId),
+        monthList,
+        { complexId: complex.complexId, areaM2: complex.representativeAreaM2 },
+      ),
+    );
+    const aggregated = aggregateRatioSeries(seriesList, { minContributors: complexes.length <= 1 ? 1 : 2 });
+    return aggregated.map((row, index) => ({
+      month: row.month,
+      ratioPct: row.ratioPct,
+      complexCount: seriesList.filter((series) => (series[index]?.ratioPct ?? 0) > 0).length,
+      jeonseSamples: seriesList.reduce((sum, series) => sum + (series[index]?.jeonseSamples ?? 0), 0),
+      saleSamples: seriesList.reduce((sum, series) => sum + (series[index]?.saleSamples ?? 0), 0),
+    }));
   }
 
   async listMacro(params: { codes?: string[]; from?: string; to?: string }): Promise<MacroIndicator[]> {

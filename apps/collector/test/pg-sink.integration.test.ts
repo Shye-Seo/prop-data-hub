@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
-import { SAMPLE_REGIONS, buildSampleTransactions } from '@prop/shared';
+import { SAMPLE_REGIONS, buildSampleRentTransactions, buildSampleTransactions } from '@prop/shared';
 import { PgSink } from '../src/db/pg-sink';
 import { MemorySink } from '../src/sink';
 import type { Queryable } from '../src/db/queryable';
@@ -46,9 +46,30 @@ describe('PgSink (PGlite)', () => {
 
   it('지역·단지를 업서트한다', async () => {
     const regions = await db.query<{ count: string }>('SELECT count(*)::text AS count FROM regions');
-    expect(Number(regions.rows[0]?.count)).toBe(3);
+    expect(Number(regions.rows[0]?.count)).toBe(6);
     const complexes = await db.query<{ count: string }>('SELECT count(*)::text AS count FROM apartment_complexes');
     expect(Number(complexes.rows[0]?.count)).toBe(1);
+  });
+
+  it('전월세를 멱등 업서트하고 전세·월세를 함께 저장한다', async () => {
+    const sample = buildSampleRentTransactions().filter((row) => row.complexId === 'MOLIT-26290-001').slice(0, 5);
+    expect(sample.length).toBeGreaterThan(0);
+
+    const first = await sink.upsertRentTransactions(sample);
+    expect(first.inserted).toBe(sample.length);
+    expect(first.updated).toBe(0);
+
+    const second = await sink.upsertRentTransactions(sample);
+    expect(second.inserted).toBe(0);
+    expect(second.updated).toBe(sample.length);
+
+    const { rows } = await db.query<{ count: string; jeonse: string }>(
+      `SELECT count(*)::text AS count,
+              count(*) FILTER (WHERE contract_type = 'jeonse')::text AS jeonse
+         FROM apt_rent_transactions`,
+    );
+    expect(Number(rows[0]?.count)).toBe(sample.length);
+    expect(Number(rows[0]?.jeonse)).toBe(sample.filter((row) => row.contractType === 'jeonse').length);
   });
 
   it('거래를 멱등 업서트하고 신규/갱신 건수를 구분한다', async () => {

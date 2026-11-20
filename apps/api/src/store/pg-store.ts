@@ -3,6 +3,7 @@ import {
   recentMonths,
   shiftMonth,
   type ApartmentComplex,
+  type AptRentTransaction,
   type AptTransaction,
   type BehaviorEventRecord,
   type DeadLetterEntry,
@@ -18,6 +19,9 @@ import type {
   EventFilter,
   EventInsertResult,
   EventStats,
+  JeonseRatioRow,
+  RentFilter,
+  RentPage,
   Store,
   TransactionFilter,
   TransactionPage,
@@ -86,11 +90,60 @@ function mapTransaction(row: TransactionRow): AptTransaction {
   };
 }
 
+interface RentRow {
+  rent_hash: string;
+  lawd_cd: string;
+  legal_dong_code: string;
+  dong: string;
+  apt_name: string;
+  complex_id: string | null;
+  jibun: string | null;
+  built_year: number | null;
+  deal_month: string;
+  deal_date: string | Date;
+  floor: number | null;
+  area_m2: string | number;
+  deposit_krw: string | number;
+  monthly_rent_krw: string | number;
+  contract_type: string;
+  contract_term_months: number | null;
+  renewal_requested: boolean;
+  source_id: string;
+  as_of_date: string | Date;
+  collected_at: string | Date;
+  source_note: string | null;
+}
+
+function mapRent(row: RentRow): AptRentTransaction {
+  return {
+    rentHash: row.rent_hash,
+    lawdCd: row.lawd_cd,
+    legalDongCode: row.legal_dong_code,
+    dong: row.dong,
+    aptName: row.apt_name,
+    complexId: row.complex_id,
+    jibun: row.jibun ?? '',
+    builtYear: row.built_year === null ? null : Number(row.built_year),
+    dealMonth: row.deal_month,
+    dealDate: toIsoDate(row.deal_date),
+    floor: row.floor === null ? null : Number(row.floor),
+    areaM2: Number(row.area_m2),
+    depositKrw: Number(row.deposit_krw),
+    monthlyRentKrw: Number(row.monthly_rent_krw),
+    contractType: row.contract_type === 'jeonse' ? 'jeonse' : 'monthly',
+    contractTermMonths: row.contract_term_months === null ? null : Number(row.contract_term_months),
+    renewalRequested: row.renewal_requested,
+    sourceId: row.source_id,
+    asOfDate: toIsoDate(row.as_of_date),
+    collectedAt: toIsoTimestamp(row.collected_at),
+    sourceNote: row.source_note,
+  };
+}
+
 export class PgStore implements Store {
   readonly kind = 'postgres' as const;
 
   constructor(private readonly db: Queryable) {}
-
   async listRegions(): Promise<Region[]> {
     const { rows } = await this.db.query<{
       legal_dong_code: string;
@@ -287,8 +340,105 @@ export class PgStore implements Store {
     });
   }
 
-  async listMacro(params: { codes?: string[]; from?: string; to?: string }): Promise<MacroIndicator[]> {
-    const conditions: string[] = [];
+  async listRentTransactions(filter: RentFilter): Promise<RentPage> {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    const add = (clause: (index: number) => string, value: unknown) => {
+      params.push(value);
+      where.push(clause(params.length));
+    };
+    if (filter.lawdCd) add((index) => `r.lawd_cd = $${index}`, filter.lawdCd);
+    if (filter.legalDongCode) add((index) => `r.legal_dong_code = $${index}`, filter.legalDongCode);
+    if (filter.complexId) add((index) => `r.complex_id = $${index}`, filter.complexId);
+    if (filter.contractType) add((index) => `r.contract_type = $${index}`, filter.contractType);
+    if (filter.fromMonth) add((index) => `r.deal_month >= $${index}`, filter.fromMonth);
+    if (filter.toMonth) add((index) => `r.deal_month <= $${index}`, filter.toMonth);
+    const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+
+    const limitIndex = params.length + 1;
+    const offsetIndex = params.length + 2;
+    const { rows } = await this.db.query<RentRow & { total_count: string }>(
+      `SELECT r.*, g.dong, count(*) OVER ()::text AS total_count
+         FROM apt_rent_transactions r
+         JOIN regions g ON g.legal_dong_code = r.legal_dong_code
+         ${whereSql}
+        ORDER BY r.deal_date DESC, r.rent_hash DESC
+        LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
+      [...params, filter.limit, filter.offset],
+    );
+
+    if (rows.length === 0) {
+      const { rows: countRows } = await this.db.query<{ count: string }>(
+        `SELECT count(*)::text AS count
+           FROM apt_rent_transactions r
+           JOIN regions g ON g.legal_dong_code = r.legal_dong_code
+           ${whereSql}`,
+        params,
+      );
+      return { rows: [], total: Number(countRows[0]?.count ?? 0) };
+    }
+
+    return { rows: rows.map(mapRent), total: Number(rows[0]!.total_count) };
+  }
+
+  async jeonseRatioMonthly(params: {
+    lawdCd?: string;
+    legalDongCode?: string;
+    complexId?: string;
+    months: number;
+  }): Promise<JeonseRatioRow[]> {
+    const where: string[] = [];
+    const values: unknown[] = [];
+    const add = (clause: (index: number) => string, value: unknown) => {
+      values.push(value);
+      where.push(clause(values.length));
+    };
+    if (params.complexId) add((index) => `complex_id = $${index}`, params.complexId);
+    else if (params.legalDongCode) add((index) => `legal_dong_code = $${index}`, params.legalDongCode);
+    else if (params.lawdCd) add((index) => `lawd_cd = $${index}`, params.lawdCd);
+    const scopeSql = where.length > 0 ? `AND ${where.join(' AND ')}` : '';
+
+    const { rows: latestRows } = await this.db.query<{ latest: string | null }>(
+      `SELECT max(deal_month) AS latest FROM apt_rent_transactions WHERE contract_type = 'jeonse' ${scopeSql}`,
+      values,
+    );
+    const latest = latestRows[0]?.latest ?? shiftMonth(new Date().toISOString().slice(0, 7), -1);
+    const months = recentMonths(latest, params.months);
+
+    const { rows } = await this.db.query<{
+      month: string;
+      ratio_pct: string;
+      complex_count: string;
+      jeonse_samples: string;
+      sale_samples: string;
+    }>(
+      `SELECT deal_month AS month,
+              round(percentile_cont(0.5) WITHIN GROUP (ORDER BY jeonse_ratio_pct)::numeric, 1)::text AS ratio_pct,
+              count(DISTINCT complex_id)::text AS complex_count,
+              sum(jeonse_samples)::text AS jeonse_samples,
+              sum(sale_samples)::text AS sale_samples
+         FROM v_jeonse_ratio_monthly
+        WHERE deal_month BETWEEN $${values.length + 1} AND $${values.length + 2}
+          ${scopeSql}
+        GROUP BY deal_month
+        ORDER BY deal_month`,
+      [...values, months[0], months[months.length - 1]],
+    );
+
+    const byMonth = new Map(rows.map((row) => [row.month, row]));
+    return months.map((month) => {
+      const row = byMonth.get(month);
+      return {
+        month,
+        ratioPct: row ? Number(row.ratio_pct) : 0,
+        complexCount: row ? Number(row.complex_count) : 0,
+        jeonseSamples: row ? Number(row.jeonse_samples) : 0,
+        saleSamples: row ? Number(row.sale_samples) : 0,
+      };
+    });
+  }
+
+  async listMacro(params: { codes?: string[]; from?: string; to?: string }): Promise<MacroIndicator[]> {    const conditions: string[] = [];
     const values: unknown[] = [];
     if (params.codes && params.codes.length > 0) {
       values.push(params.codes);

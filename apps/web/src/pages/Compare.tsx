@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Card, DataNote } from '../components/ui';
+import { Card, DataNote, RiskBadge } from '../components/ui';
 import { LineChart } from '../components/charts';
 import { ALL_COMPLEX_STATS, REGION_OPTIONS, complexStat, dataset } from '../lib/dataset';
+import { RISK_BY_COMPLEX, complexJeonseSeries } from '../lib/risk';
 import { formatKrwKorean, formatNumber, formatPct, formatPyeongPrice } from '../lib/format';
 import { tracker } from '../lib/tracker';
 
@@ -40,6 +41,13 @@ export default function Compare() {
     label: stat.complex.name,
     color: COLORS[index % COLORS.length]!,
     points: stat.series.map((row) => ({ label: row.month, value: row.medianPricePerPyeong })),
+  }));
+
+  const jeonseSeries = stats.map((stat, index) => ({
+    key: `jeonse-${stat.complex.complexId}`,
+    label: stat.complex.name,
+    color: COLORS[index % COLORS.length]!,
+    points: complexJeonseSeries(stat.complex.complexId).map((row) => ({ label: row.month, value: row.ratioPct })),
   }));
 
   return (
@@ -101,6 +109,18 @@ export default function Compare() {
           </Card>
 
           {stats.length > 0 && (
+            <Card title="전세가율 추이" subtitle="같은 면적 구간 매칭 · 80% 넘으면 경고 구간" action={<span className="text-[11px] text-slate-400">단위: %</span>}>
+              <LineChart
+                ariaLabel="선택한 단지들의 전세가율 추이 비교"
+                series={jeonseSeries}
+                height={220}
+                formatValue={(value) => `${value.toFixed(1)}%`}
+                formatAxis={(value) => `${Math.round(value)}%`}
+              />
+            </Card>
+          )}
+
+          {stats.length > 0 && (
             <Card title="비교 요약" subtitle={`기준월 ${stats[0]?.latestMonth ?? '-'} · 최근 12개월 거래량`}>
               <div className="scroll-thin overflow-x-auto">
                 <table className="w-full min-w-[560px] border-collapse text-sm">
@@ -113,7 +133,13 @@ export default function Compare() {
                             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
                             {stat.complex.name}
                           </span>
-                          <span className="block text-[10px] font-normal text-slate-400">{stat.dong}</span>
+                          <span className="mt-0.5 flex items-center justify-end gap-1 text-[10px] font-normal text-slate-400">
+                            {stat.dong}
+                            {(() => {
+                              const risk = RISK_BY_COMPLEX.get(stat.complex.complexId);
+                              return risk && risk.level !== 'low' ? <RiskBadge level={risk.level} /> : null;
+                            })()}
+                          </span>
                         </th>
                       ))}
                     </tr>
@@ -127,6 +153,24 @@ export default function Compare() {
                       tone={stats.map((stat) => (stat.change12mPct >= 0 ? 'up' : 'down'))}
                     />
                     <Row label="최근 12개월 거래" values={stats.map((stat) => `${formatNumber(stat.volume12m)}건`)} />
+                    <Row
+                      label="전세가율"
+                      values={stats.map((stat) => {
+                        const risk = RISK_BY_COMPLEX.get(stat.complex.complexId);
+                        return risk ? `${risk.jeonseRatioPct.toFixed(1)}%` : '-';
+                      })}
+                      tone={stats.map((stat) => {
+                        const risk = RISK_BY_COMPLEX.get(stat.complex.complexId);
+                        return risk && risk.jeonseRatioPct >= 80 ? 'down' : 'up';
+                      })}
+                    />
+                    <Row
+                      label="리스크 점수"
+                      values={stats.map((stat) => {
+                        const risk = RISK_BY_COMPLEX.get(stat.complex.complexId);
+                        return risk ? `${risk.score} (${risk.signals.length}개 신호)` : '-';
+                      })}
+                    />
                     <Row label="세대수" values={stats.map((stat) => `${stat.complex.households.toLocaleString('ko-KR')}세대`)} />
                     <Row label="준공" values={stats.map((stat) => `${stat.complex.builtYear}년`)} />
                   </tbody>
@@ -139,7 +183,8 @@ export default function Compare() {
 
       <DataNote>
         평당가는 전용면적을 3.305785㎡=1평으로 환산해 계산합니다. 단지별 표본 수가 적은 달은 중위값이 흔들릴 수 있어,
-        실서비스에서는 표본 3건 미만 월을 흐리게 표시하거나 제외하는 규칙을 적용합니다.
+        실서비스에서는 표본 3건 미만 월을 흐리게 표시하거나 제외하는 규칙을 적용합니다. 전세가율과 리스크 점수는
+        packages/shared/src/risk.ts의 같은 계산을 화면과 API가 함께 씁니다.
         {selected.length > 0 && ` 현재 비교 조합: ${selected.join(', ')}`}
       </DataNote>
       <p className="text-[11px] text-slate-400">

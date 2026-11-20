@@ -20,6 +20,16 @@ export const SOURCE_CATALOG: SourceDescriptor[] = [
     requiresKey: true,
   },
   {
+    sourceId: SOURCE_IDS.molitAptRent,
+    name: '아파트 전월세 실거래가',
+    provider: '국토교통부 (공공데이터포털)',
+    endpoint: 'https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent',
+    license: '이용허락범위 제한 없음',
+    updateCycle: '매월 신고분 반영(계약일 기준, 통상 1~2개월 지연)',
+    asOfPolicy: '계약 연월 기준. 보증금·월세를 함께 저장하고 전세가율은 전세 계약만 집계한다.',
+    requiresKey: true,
+  },
+  {
     sourceId: SOURCE_IDS.ecosRates,
     name: '기준금리·주택담보대출 금리',
     provider: '한국은행 ECOS Open API',

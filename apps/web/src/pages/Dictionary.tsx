@@ -63,6 +63,8 @@ const API_ROWS = [
   ['GET', '/api/v1/complexes/:id/monthly', '단지 월별 중위가'],
   ['GET', '/api/v1/transactions', '실거래 필터·정렬·페이지'],
   ['GET', '/api/v1/transactions/monthly', '지역 월별 집계'],
+  ['GET', '/api/v1/rents', '전월세 실거래(전세·월세)'],
+  ['GET', '/api/v1/market/jeonse-ratio', '월별 전세가율(면적 구간 매칭)'],
   ['GET', '/api/v1/macro', '거시지표 시계열'],
   ['GET', '/api/v1/macro/latest', '지표별 최신값'],
   ['GET', '/api/v1/pipeline/sources', '출처·기준일 정책'],
@@ -147,6 +149,34 @@ export default function Dictionary() {
         </Card>
       </div>
 
+      <Card title="전세가율·리스크 정의" subtitle="화면과 API가 같은 계산을 쓰도록 shared에 고정">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <p className="text-xs font-semibold text-slate-800">전세가율</p>
+            <p className="num mt-1 rounded bg-slate-50 px-2 py-1.5 text-[11px] text-slate-700">
+              전세 보증금 평당가 ÷ 매매 평당가 × 100
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              같은 단지·월·면적 구간(5㎡)에서 매칭합니다. 59㎡와 84㎡가 섞인 단지에서 총액끼리 나누면 면적 구성 때문에
+              값이 튀기 때문입니다. 구간: 70% 주의 · 80% 경고 · 90% 위험.
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-slate-800">리스크 점수 (0~100)</p>
+            <ul className="mt-1 space-y-0.5 text-[11px] leading-relaxed text-slate-600">
+              <li>· 전세가율: 70%↑ 6점 · 75%↑ 12점 · 80%↑ 22점 · 85%↑ 28점 · 90%↑ 35점</li>
+              <li>· 최근 6개월 하락: -1%↓ 4점 · -3%↓ 10점 · -6%↓ 18점 · -10%↓ 25점</li>
+              <li>· 12개월 하락: -2%↓ 3점 · -5%↓ 8점 · -10%↓ 12점</li>
+              <li>· 이상 거래 1건 6점 · 2건 10점 · 3건↑ 15점 / 12개월 거래 6건↓ 10점</li>
+            </ul>
+            <p className="mt-1 text-[10px] text-slate-400">
+              이상 거래는 단지·면적 구간 중위값과 MAD로 수정 z-score를 계산하고, 중위 대비 -14% 이상 급락은 따로 표시합니다.
+              감정평가가 아닌 계약 전 확인 지표입니다.
+            </p>
+          </div>
+        </div>
+      </Card>
+
       <Card title="데이터 품질 규칙" subtitle="수집·정규화 단계에서 실제로 적용되는 규칙">
         <div className="scroll-thin overflow-x-auto">
           <table className="w-full min-w-[680px] border-collapse text-xs">
@@ -206,10 +236,11 @@ export default function Dictionary() {
           <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
             <p className="text-xs font-semibold text-emerald-800">검증된 것</p>
             <ul className="mt-1 space-y-1 text-[11px] leading-relaxed text-emerald-900/80">
-              <li>· 공공데이터 XML/JSON 정규화와 거래 해시 멱등 업서트</li>
-              <li>· 조회 필터·정렬·월별 중위가 집계(PostgreSQL 실행 검증)</li>
+              <li>· 공공데이터(매매·전월세) XML/JSON 정규화와 거래 해시 멱등 업서트</li>
+              <li>· 조회 필터·정렬·월별 중위가 집계, 전세가율 뷰 (PostgreSQL 실행 검증)</li>
+              <li>· 전세가율·이상 거래·리스크 점수 계산과 샘플 고정</li>
               <li>· 행동 이벤트 스키마 검증·배치 수집·퍼널 집계</li>
-              <li>· 프로덕션 빌드 E2E(지역 필터·비교·금리·이벤트·파이프라인)</li>
+              <li>· 프로덕션 빌드 E2E(탐색·비교·리스크·이벤트·인스펙터·API 문서)</li>
             </ul>
           </div>
           <div className="rounded-lg border border-slate-300 bg-slate-50 p-3">
@@ -223,8 +254,8 @@ export default function Dictionary() {
           </div>
         </div>
         <p className="mt-3 text-[11px] text-slate-400">
-          현재 데모 데이터: 단지 {dataset.complexes.length}개 · 거래 {formatNumber(dataset.transactions.length)}건 ·
-          거시지표 {formatNumber(dataset.macro.length)}개 값
+          현재 데모 데이터: 단지 {dataset.complexes.length}개 · 매매 {formatNumber(dataset.transactions.length)}건 · 전월세{' '}
+          {formatNumber(dataset.rentTransactions.length)}건 · 거시지표 {formatNumber(dataset.macro.length)}개 값
         </p>
       </Card>
     </div>

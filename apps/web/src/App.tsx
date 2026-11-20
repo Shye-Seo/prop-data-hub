@@ -5,24 +5,32 @@ import { SAMPLE_END_MONTH } from '@prop/shared';
 import Overview from './pages/Overview';
 import Explore from './pages/Explore';
 import Compare from './pages/Compare';
+import RegionRisk from './pages/RegionRisk';
 import RateLab from './pages/RateLab';
 import Pipeline from './pages/Pipeline';
 import Events from './pages/Events';
+import ApiDocs from './pages/ApiDocs';
 import Dictionary from './pages/Dictionary';
+import EventInspector from './components/EventInspector';
 
 const ROUTE_TITLES: Record<RouteKey, { title: string; description: string }> = {
-  overview: { title: '시장 개요', description: '부산 남구·해운대구 실거래와 금리 지표를 한 화면에서 봅니다.' },
+  overview: { title: '시장 개요', description: '부산 남구·수영구·해운대구 실거래와 금리 지표를 한 화면에서 봅니다.' },
   explore: { title: '실거래 탐색', description: '지역·단지·면적·기간으로 실거래를 좁히고 평당가를 비교합니다.' },
-  compare: { title: '단지 비교', description: '최대 3개 단지의 가격 추이와 거래량을 같은 축에서 비교합니다.' },
+  compare: { title: '단지 비교', description: '최대 3개 단지의 가격 추이·전세가율·리스크를 같은 축에서 비교합니다.' },
+  risk: { title: '구별 리스크', description: '전세가율·급락·이상 거래로 남구·수영구·해운대구를 비교합니다.' },
   rate: { title: '금리 민감도', description: '대출 조건을 바꾸며 월 상환액과 필요 소득(DSR)을 계산합니다.' },
   pipeline: { title: '수집 파이프라인', description: '공공데이터 수집 실행, 실패 재시도, 데이터 기준일을 확인합니다.' },
   events: { title: '행동 이벤트', description: '이 화면에서 발생한 이벤트와 퍼널 전환을 실시간으로 봅니다.' },
+  api: { title: 'API 문서', description: 'OpenAPI 3.0 명세와 PostgreSQL 스키마를 열람하고 예시 응답을 실행합니다.' },
   dictionary: { title: '지표 정의서', description: '이벤트·퍼널·데이터 품질 규칙을 정의 단위로 정리했습니다.' },
 };
 
 export default function App() {
   const [route, navigate] = useRoute();
   const [eventCount, setEventCount] = useState(0);
+  const [inspectorOpen, setInspectorOpen] = useState(() =>
+    typeof window === 'undefined' ? true : window.innerWidth >= 1024,
+  );
 
   useEffect(() => {
     tracker.track('page_view', {
@@ -39,7 +47,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 lg:flex">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-ink-700/40 bg-ink-900 px-4 py-6 text-slate-200 lg:flex">
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-ink-700/40 bg-ink-900 px-4 py-6 text-slate-200 lg:sticky lg:top-0 lg:flex lg:h-screen lg:overflow-y-auto">
         <BrandMark />
         <nav className="mt-7 space-y-1" aria-label="주요 화면">
           {ROUTES.map((item) => (
@@ -124,24 +132,34 @@ export default function App() {
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
             <span className="font-semibold">샘플 데이터</span>
             <span className="text-amber-800">
-              단지명·준공연도·세대수는 공개 정보 기준이고, 거래 금액·층·계약일은 화면 검증용 대표 표본입니다. 실제 거래 내역이 아닙니다.
+              단지명·준공연도·세대수는 공개 정보 기준이고, 거래 금액·층·계약일과 전월세 보증금·월세는 화면 검증용 대표 표본입니다. 실제 거래 내역이 아닙니다.
             </span>
           </div>
 
           {route === 'overview' && <Overview navigate={navigate} />}
           {route === 'explore' && <Explore />}
           {route === 'compare' && <Compare />}
+          {route === 'risk' && <RegionRisk />}
           {route === 'rate' && <RateLab />}
           {route === 'pipeline' && <Pipeline />}
           {route === 'events' && <Events />}
+          {route === 'api' && <ApiDocs />}
           {route === 'dictionary' && <Dictionary />}
 
           <footer className="mt-10 border-t border-slate-200 pt-4 text-[11px] leading-relaxed text-slate-400">
-            prop-data-hub · TypeScript · React · Node.js · PostgreSQL · AWS 설계 문서 포함 · API 명세(OpenAPI 3.0)는 로컬 API
-            서버의 /api-docs에서 확인합니다.
+            prop-data-hub · TypeScript · React · Node.js · PostgreSQL · AWS 설계 문서 포함 · API 명세(OpenAPI 3.0)는{' '}
+            <button type="button" className="underline decoration-dotted" onClick={() => navigate('api')}>
+              API 문서
+            </button>
+            에서 열람·실행합니다.
           </footer>
+
+          {/* 하단 인스펙터가 내용을 가리지 않도록 같은 높이의 여백을 둔다. */}
+          <div aria-hidden="true" style={{ height: inspectorOpen ? 260 : 44 }} />
         </main>
       </div>
+
+      <EventInspector open={inspectorOpen} onToggle={() => setInspectorOpen((value) => !value)} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { median } from '@prop/shared';
-import { Card, DataNote, EmptyState, Field } from '../components/ui';
+import { Card, DataNote, EmptyState, Field, RiskBadge } from '../components/ui';
 import {
   AREA_BANDS,
   COMPLEX_BY_ID,
@@ -9,6 +9,7 @@ import {
   transactionsFor,
   type AreaBandKey,
 } from '../lib/dataset';
+import { ANOMALY_BY_DEAL_HASH, RISK_BY_COMPLEX, readSavedComplexes, writeSavedComplexes } from '../lib/risk';
 import { formatArea, formatDate, formatKrwKorean, formatNumber, formatPyeong, formatPyeongPrice } from '../lib/format';
 import { tracker } from '../lib/tracker';
 
@@ -28,6 +29,8 @@ export default function Explore() {
   const [sort, setSort] = useState<(typeof SORTS)[number]['key']>('deal_date_desc');
   const [visible, setVisible] = useState(PAGE_SIZE);
   const [toast, setToast] = useState<string | null>(null);
+  const [selectedHash, setSelectedHash] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string[]>(() => (typeof window === 'undefined' ? [] : readSavedComplexes()));
   const initial = useRef(true);
 
   const complexes = useMemo(
@@ -74,6 +77,41 @@ export default function Explore() {
     medianPrice: median(rows.map((row) => row.priceKrw)),
     medianPpp: median(rows.map((row) => row.pricePerPyeong)),
     medianArea: median(rows.map((row) => row.areaM2)),
+  };
+
+  const selected = selectedHash ? rows.find((row) => row.dealHash === selectedHash) : undefined;
+  const selectedRisk = selected?.complexId ? RISK_BY_COMPLEX.get(selected.complexId) : undefined;
+
+  /** 매물 클릭: 상세를 열고 listing_click 이벤트를 남긴다. */
+  const openDeal = (row: (typeof rows)[number]) => {
+    setSelectedHash(row.dealHash === selectedHash ? null : row.dealHash);
+    if (row.dealHash === selectedHash) return;
+    tracker.track('listing_click', {
+      complexId: row.complexId ?? row.aptName,
+      aptName: row.aptName,
+      dealHash: row.dealHash,
+      priceKrw: row.priceKrw,
+      areaM2: row.areaM2,
+      source: 'explore_table',
+      jeonseRatioPct: row.complexId ? RISK_BY_COMPLEX.get(row.complexId)?.jeonseRatioPct : undefined,
+    });
+  };
+
+  /** 관심 등록: 브라우저에 저장하고 listing_save 이벤트를 남긴다. */
+  const toggleSaved = (complexId: string, aptName: string, priceKrw?: number) => {
+    const isSaved = saved.includes(complexId);
+    const next = isSaved ? saved.filter((id) => id !== complexId) : [...saved, complexId].slice(0, 50);
+    setSaved(next);
+    writeSavedComplexes(next);
+    tracker.track('listing_save', {
+      complexId,
+      aptName,
+      action: isSaved ? 'remove' : 'add',
+      savedCount: next.length,
+      priceKrw,
+    });
+    setToast(isSaved ? `${aptName}을(를) 관심에서 뺐습니다.` : `${aptName}을(를) 관심에 담았습니다. (${next.length}곳)`);
+    window.setTimeout(() => setToast(null), 3000);
   };
 
   const exportCsv = () => {
@@ -182,13 +220,48 @@ export default function Explore() {
 
       <Card
         title="실거래 목록"
-        subtitle={`전체 ${formatNumber(summary.count)}건 중 ${Math.min(visible, summary.count)}건 표시`}
+        subtitle={`전체 ${formatNumber(summary.count)}건 중 ${Math.min(visible, summary.count)}건 표시 · 관심 ${saved.length}곳`}
         action={
           <button type="button" className="btn" onClick={exportCsv} data-testid="export-csv" disabled={rows.length === 0}>
             CSV 저장
           </button>
         }
       >
+        {selected && (
+          <div className="mb-3 rounded-lg border border-teal-200 bg-teal-50/60 px-3 py-2.5" data-testid="deal-detail">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[13px] font-semibold text-ink-900">
+                  {selected.aptName} · {formatDate(selected.dealDate)} 계약
+                </p>
+                <p className="num mt-0.5 text-[11px] text-slate-600">
+                  {formatKrwKorean(selected.priceKrw)} · {formatArea(selected.areaM2)}㎡ · {selected.floor ?? '-'}층 · 평당가{' '}
+                  {formatPyeongPrice(selected.pricePerPyeong)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedRisk && <RiskBadge level={selectedRisk.level}>{`전세가율 ${selectedRisk.jeonseRatioPct.toFixed(1)}%`}</RiskBadge>}
+                <button
+                  type="button"
+                  className="btn-ghost text-xs"
+                  onClick={() => toggleSaved(selected.complexId ?? selected.aptName, selected.aptName, selected.priceKrw)}
+                  data-testid="save-listing"
+                >
+                  {saved.includes(selected.complexId ?? selected.aptName) ? '관심 해제' : '관심 등록'}
+                </button>
+              </div>
+            </div>
+            {selectedRisk && selectedRisk.signals.length > 0 && (
+              <ul className="mt-2 flex flex-wrap gap-1.5">
+                {selectedRisk.signals.map((signal) => (
+                  <li key={signal.code} className="rounded bg-white px-2 py-1 text-[10px] text-slate-600 ring-1 ring-slate-200">
+                    <span className="font-semibold text-slate-700">{signal.label}</span> · {signal.detail}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         {rows.length === 0 ? (
           <EmptyState title="조건에 맞는 거래가 없습니다" description="기간을 늘리거나 면적 구간을 '전체 면적'으로 바꿔 보세요." />
         ) : (
@@ -204,11 +277,20 @@ export default function Explore() {
                     <th className="px-2 py-2 text-right">층</th>
                     <th className="px-2 py-2 text-right">거래금액</th>
                     <th className="px-2 py-2 text-right">평당가</th>
+                    <th className="px-2 py-2">리스크</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.slice(0, visible).map((row) => (
-                    <tr key={row.dealHash} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">
+                  {rows.slice(0, visible).map((row) => {
+                    const anomaly = ANOMALY_BY_DEAL_HASH.get(row.dealHash);
+                    const risk = row.complexId ? RISK_BY_COMPLEX.get(row.complexId) : undefined;
+                    return (
+                    <tr
+                      key={row.dealHash}
+                      className={`cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50/70 ${selectedHash === row.dealHash ? 'bg-teal-50/50' : ''}`}
+                      onClick={() => openDeal(row)}
+                      data-testid={`deal-row-${row.dealHash.slice(0, 6)}`}
+                    >
                       <td className="num px-2 py-2 text-xs text-slate-500">{formatDate(row.dealDate)}</td>
                       <td className="px-2 py-2">
                         <span className="text-[13px] font-medium text-slate-800">{row.aptName}</span>
@@ -222,8 +304,24 @@ export default function Explore() {
                       <td className="num px-2 py-2 text-right text-xs text-slate-600">{row.floor ?? '-'}</td>
                       <td className="num px-2 py-2 text-right text-[13px] font-semibold text-ink-800">{formatKrwKorean(row.priceKrw)}</td>
                       <td className="num px-2 py-2 text-right text-xs text-slate-600">{formatPyeongPrice(row.pricePerPyeong)}</td>
+                      <td className="px-2 py-2">
+                        <div className="flex flex-wrap gap-1">
+                          {anomaly && (
+                            <span
+                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                                anomaly.kind === 'sharp_drop' ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200' : 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
+                              }`}
+                              title={`단지 중위 평당가 대비 ${anomaly.deviationPct}%`}
+                            >
+                              {anomaly.kind === 'sharp_drop' ? '급락' : anomaly.kind === 'outlier_high' ? '고가 이상' : '저가 이상'}
+                            </span>
+                          )}
+                          {risk && risk.level !== 'low' && <RiskBadge level={risk.level} />}
+                        </div>
+                      </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -242,7 +340,9 @@ export default function Explore() {
 
       <DataNote>
         목록은 계약일·단지·면적·층·금액 조건으로 정렬됩니다. 실서비스에서는 이 조회가 PostgreSQL의
-        (지역, 월, 금액) 복합 인덱스와 BRIN 기간 스캔을 타도록 설계했습니다.
+        (지역, 월, 금액) 복합 인덱스와 BRIN 기간 스캔을 타도록 설계했습니다. 행을 누르면 상세가 열리고
+        listing_click, 관심 등록은 listing_save 이벤트로 남습니다. 리스크 배지는 단지의 전세가율·급락·이상 거래를 합산한
+        점수입니다.
       </DataNote>
 
       {toast && (

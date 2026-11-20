@@ -3,6 +3,7 @@ import {
   SOURCE_IDS,
   isCountableTransaction,
   recentMonths,
+  type AptRentTransaction,
   type AptTransaction,
   type DeadLetterEntry,
   type MacroIndicator,
@@ -14,6 +15,7 @@ import {
 import { HttpClient, HttpError } from './http';
 import type { IngestionSink, UpsertResult } from './sink';
 import { collectMolitMonth } from './sources/molit';
+import { collectMolitRentMonth } from './sources/molit-rent';
 import { collectEcosSeries, ECOS_INDICATORS, type EcosIndicatorSpec } from './sources/ecos';
 
 export interface PipelineDeps {
@@ -207,6 +209,155 @@ export async function runMolitIngestion(
   return { run: finished, tasks, failures, dealCount, canceledCount };
 }
 
+export interface MolitRentIngestionOptions {
+  endpoint: string;
+  serviceKey: string;
+  regions: Region[];
+  lawdCds: string[];
+  endMonth: string;
+  months: number;
+  jobType: PipelineRun['jobType'];
+  triggeredBy: string;
+  numOfRows?: number;
+  maxPages?: number;
+}
+
+export interface RentRunSummary {
+  run: PipelineRun;
+  tasks: PipelineRunTask[];
+  failures: Array<{ period: string; lawdCd: string | null; error: string }>;
+  jeonseCount: number;
+  monthlyCount: number;
+}
+
+/**
+ * 전월세 수집 실행. 매매와 같은 (지역×월) 태스크 단위로 실패를 격리하고 DLQ에 남긴다.
+ * 전세가율 화면·API가 이 실행 결과(apt_rent_transactions)를 읽는다.
+ */
+export async function runMolitRentIngestion(
+  options: MolitRentIngestionOptions,
+  deps: PipelineDeps,
+): Promise<RentRunSummary> {
+  const now = deps.now ?? (() => new Date());
+  const startedAt = now();
+  const months = recentMonths(options.endMonth, options.months).reverse();
+  const runId = buildRunId(startedAt, 'molit-rent', deps.idFactory);
+
+  const tasks: PipelineRunTask[] = [];
+  const failures: RentRunSummary['failures'] = [];
+  let recordsUpserted = 0;
+  let recordsSkipped = 0;
+  let retryCount = 0;
+  let jeonseCount = 0;
+  let monthlyCount = 0;
+
+  const run: PipelineRun = {
+    runId,
+    sourceId: SOURCE_IDS.molitAptRent,
+    jobType: options.jobType,
+    status: 'running',
+    startedAt: startedAt.toISOString(),
+    finishedAt: null,
+    requestedMonths: options.months,
+    taskTotal: options.lawdCds.length * months.length,
+    taskSucceeded: 0,
+    taskFailed: 0,
+    recordsUpserted: 0,
+    recordsSkipped: 0,
+    retryCount: 0,
+    errorSummary: null,
+    triggeredBy: options.triggeredBy,
+  };
+  await deps.sink.startRun(run);
+
+  for (const lawdCd of options.lawdCds) {
+    for (const dealMonth of months) {
+      const taskBase = { runId, sourceId: SOURCE_IDS.molitAptRent, lawdCd, period: dealMonth };
+      try {
+        const result = await collectMolitRentMonth(
+          {
+            endpoint: options.endpoint,
+            serviceKey: options.serviceKey,
+            http: deps.http,
+            regions: options.regions,
+            numOfRows: options.numOfRows,
+            maxPages: options.maxPages,
+            now,
+          },
+          { lawdCd, dealMonth },
+        );
+
+        const upserted: UpsertResult = await deps.sink.upsertRentTransactions(result.transactions);
+        recordsUpserted += upserted.inserted + upserted.updated;
+        recordsSkipped += result.skipped.length;
+        retryCount += result.retries;
+        jeonseCount += result.transactions.filter((row) => row.contractType === 'jeonse').length;
+        monthlyCount += result.transactions.filter((row) => row.contractType === 'monthly').length;
+
+        const task: PipelineRunTask = {
+          ...taskBase,
+          status: 'succeeded',
+          attempts: 1,
+          records: upserted.inserted + upserted.updated,
+          error: null,
+          updatedAt: now().toISOString(),
+        };
+        tasks.push(task);
+        await deps.sink.saveTask(task);
+        deps.logger?.(`[molit-rent] ${lawdCd}/${dealMonth} ${task.records}건 반영 (신규 ${upserted.inserted}, 갱신 ${upserted.updated})`);
+      } catch (error) {
+        const message = toErrorMessage(error);
+        const attempts = toAttempts(error);
+        retryCount += Math.max(0, attempts - 1);
+        failures.push({ period: dealMonth, lawdCd, error: message });
+
+        const task: PipelineRunTask = {
+          ...taskBase,
+          status: 'failed',
+          attempts,
+          records: 0,
+          error: message,
+          updatedAt: now().toISOString(),
+        };
+        tasks.push(task);
+        await deps.sink.saveTask(task);
+        await deps.sink.enqueueDeadLetter({
+          id: `dlq_rent_${runId}_${lawdCd}_${dealMonth.replace('-', '')}`,
+          runId,
+          sourceId: SOURCE_IDS.molitAptRent,
+          payload: { lawdCd, dealMonth, numOfRows: options.numOfRows ?? 100, maxPages: options.maxPages ?? 20 },
+          error: message,
+          attempts,
+          nextRetryAt: new Date(now().getTime() + (deps.deadLetterRetryDelayMs ?? 60_000)).toISOString(),
+          resolvedAt: null,
+        });
+        deps.logger?.(`[molit-rent] ${lawdCd}/${dealMonth} 실패: ${message} → DLQ`);
+      }
+    }
+  }
+
+  const finished: PipelineRun = {
+    ...run,
+    status: finalizeStatus(run.taskTotal, failures.length),
+    finishedAt: now().toISOString(),
+    taskSucceeded: run.taskTotal - failures.length,
+    taskFailed: failures.length,
+    recordsUpserted,
+    recordsSkipped,
+    retryCount,
+    errorSummary:
+      failures.length === 0
+        ? null
+        : failures
+            .slice(0, 3)
+            .map((failure) => `${failure.lawdCd}/${failure.period} ${failure.error}`)
+            .join(' | '),
+  };
+  await deps.sink.finishRun(finished);
+
+  return { run: finished, tasks, failures, jeonseCount, monthlyCount };
+}
+
 export interface EcosIngestionOptions {
   endpoint: string;
   apiKey: string;
@@ -342,6 +493,30 @@ export async function retryMolitDeadLetter(
       { lawdCd: payload.lawdCd, dealMonth: payload.dealMonth },
     );
     await deps.sink.upsertTransactions(result.transactions);
+    await deps.sink.resolveDeadLetter(entry.id, now().toISOString());
+    return { resolved: true, transactions: result.transactions };
+  } catch (error) {
+    return { resolved: false, transactions: [], error: toErrorMessage(error) };
+  }
+}
+
+/** DLQ에 쌓인 전월세 수집 실패 건을 다시 시도한다. */
+export async function retryMolitRentDeadLetter(
+  entry: DeadLetterEntry,
+  options: { endpoint: string; serviceKey: string; regions: Region[] },
+  deps: PipelineDeps,
+): Promise<{ resolved: boolean; transactions: AptRentTransaction[]; error?: string }> {
+  const payload = entry.payload as { lawdCd?: string; dealMonth?: string };
+  if (!payload.lawdCd || !payload.dealMonth) {
+    return { resolved: false, transactions: [], error: 'invalid_payload' };
+  }
+  const now = deps.now ?? (() => new Date());
+  try {
+    const result = await collectMolitRentMonth(
+      { ...options, http: deps.http, now },
+      { lawdCd: payload.lawdCd, dealMonth: payload.dealMonth },
+    );
+    await deps.sink.upsertRentTransactions(result.transactions);
     await deps.sink.resolveDeadLetter(entry.id, now().toISOString());
     return { resolved: true, transactions: result.transactions };
   } catch (error) {

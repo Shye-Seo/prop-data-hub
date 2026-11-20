@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { SAMPLE_REGIONS, SOURCE_IDS } from '@prop/shared';
 import { HttpClient } from '../src/http';
 import { MemorySink } from '../src/sink';
-import { runEcosIngestion, runMolitIngestion, retryMolitDeadLetter, type PipelineDeps } from '../src/pipeline';
+import {
+  runEcosIngestion,
+  runMolitIngestion,
+  runMolitRentIngestion,
+  retryMolitDeadLetter,
+  retryMolitRentDeadLetter,
+  type PipelineDeps,
+} from '../src/pipeline';
 import { createFixtureTransport } from '../src/fixtures/transport';
 
 const endpoint = 'https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev';
@@ -160,5 +167,75 @@ describe('runEcosIngestion', () => {
     const [first] = [...sink.macro.values()];
     expect(first?.indicatorCode).toBeTruthy();
     expect(first?.periodDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe('runMolitRentIngestion', () => {
+  const rentEndpoint = 'https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent';
+
+  it('전월세를 수집해 전세·월세 건수를 나눠 기록하고 멱등 업서트한다', async () => {
+    const sink = new MemorySink();
+    await sink.saveRegions(SAMPLE_REGIONS);
+    const transport = createFixtureTransport();
+    const deps = buildDeps(sink, transport.fetch);
+
+    const options = {
+      endpoint: rentEndpoint,
+      serviceKey: 'fixture',
+      regions: SAMPLE_REGIONS,
+      lawdCds: ['26290', '26500'],
+      endMonth: '2026-09',
+      months: 2,
+      jobType: 'incremental' as const,
+      triggeredBy: 'test',
+      numOfRows: 100,
+    };
+    const first = await runMolitRentIngestion(options, deps);
+    expect(first.run.sourceId).toBe(SOURCE_IDS.molitAptRent);
+    expect(first.run.status).toBe('succeeded');
+    expect(first.run.taskTotal).toBe(4);
+    expect(first.run.recordsUpserted).toBeGreaterThan(0);
+    expect(first.jeonseCount).toBeGreaterThan(0);
+    expect(first.monthlyCount).toBeGreaterThan(0);
+    expect(sink.rentTransactions.size).toBe(first.run.recordsUpserted);
+    expect([...sink.rentTransactions.values()].every((row) => row.sourceId === SOURCE_IDS.molitAptRent)).toBe(true);
+
+    const second = await runMolitRentIngestion(options, deps);
+    expect(second.run.recordsUpserted).toBe(first.run.recordsUpserted);
+    expect(sink.rentTransactions.size).toBe(first.run.recordsUpserted);
+  });
+
+  it('실패한 (지역, 월)은 DLQ에 적재하고 retry로 해결한다', async () => {
+    const sink = new MemorySink();
+    await sink.saveRegions(SAMPLE_REGIONS);
+    const transport = createFixtureTransport({ hardFailures: [{ lawdCd: '26350', dealMonth: '2026-09' }] });
+    const deps = buildDeps(sink, transport.fetch);
+    const result = await runMolitRentIngestion(
+      {
+        endpoint: rentEndpoint,
+        serviceKey: 'fixture',
+        regions: SAMPLE_REGIONS,
+        lawdCds: ['26350'],
+        endMonth: '2026-09',
+        months: 1,
+        jobType: 'incremental',
+        triggeredBy: 'test',
+      },
+      deps,
+    );
+    expect(result.run.status).toBe('failed');
+    expect(sink.deadLetters.size).toBe(1);
+    const entry = [...sink.deadLetters.values()][0]!;
+    expect(entry.sourceId).toBe(SOURCE_IDS.molitAptRent);
+    expect(entry.id.startsWith('dlq_rent_')).toBe(true);
+
+    const retried = await retryMolitRentDeadLetter(
+      entry,
+      { endpoint: rentEndpoint, serviceKey: 'fixture', regions: SAMPLE_REGIONS },
+      { ...deps, http: new HttpClient({ fetchImpl: createFixtureTransport().fetch }) },
+    );
+    expect(retried.resolved).toBe(true);
+    expect(retried.transactions.length).toBeGreaterThan(0);
+    expect(sink.deadLetters.get(entry.id)?.resolvedAt).toBeTruthy();
   });
 });

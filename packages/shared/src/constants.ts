@@ -4,6 +4,7 @@ export const PYEONG_M2 = 3.305785;
 /** 수집 대상 공공데이터 소스 식별자. DB의 ingestion_sources.source_id와 동일한 값을 쓴다. */
 export const SOURCE_IDS = {
   molitAptTrade: 'molit_apt_trade',
+  molitAptRent: 'molit_apt_rent',
   ecosRates: 'ecos_rates',
   ecosCpi: 'ecos_cpi',
 } as const;
@@ -15,6 +16,9 @@ export const EVENT_NAMES = [
   'page_view',
   'region_filter_change',
   'complex_compare_add',
+  'listing_click',
+  'listing_save',
+  'api_doc_mock_run',
   'rate_scenario_adjust',
   'pipeline_source_inspect',
   'funnel_step_complete',
@@ -23,7 +27,7 @@ export const EVENT_NAMES = [
 export type EventName = (typeof EVENT_NAMES)[number];
 
 /** 행동 이벤트 스키마 버전. 필드가 바뀌면 올리고, 과거 데이터는 버전으로 구분한다. */
-export const EVENT_SCHEMA_VERSION = '1.0.0';
+export const EVENT_SCHEMA_VERSION = '1.1.0';
 
 /** 퍼널 단계. funnel_step_complete의 step 값과 1:1로 대응한다. */
 export const FUNNEL_STEPS = [

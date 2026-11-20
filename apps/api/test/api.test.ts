@@ -43,11 +43,11 @@ describe('API', () => {
   it('지역·단지 기준정보를 반환한다', async () => {
     const regions = await server.inject({ method: 'GET', url: '/api/v1/regions' });
     expect(regions.statusCode).toBe(200);
-    expect(regions.json().count).toBe(3);
+    expect(regions.json().count).toBe(6);
 
     const complexes = await server.inject({ method: 'GET', url: '/api/v1/complexes' });
     expect(complexes.statusCode).toBe(200);
-    expect(complexes.json().count).toBe(12);
+    expect(complexes.json().count).toBe(16);
   });
 
   it('실거래를 지역·기간·면적으로 필터링하고 페이지를 나눈다', async () => {
@@ -202,13 +202,49 @@ describe('API', () => {
     expect(funnel.json().funnel[0].sessions).toBeGreaterThanOrEqual(1);
   });
 
+  it('전월세 목록과 월별 전세가율을 반환한다', async () => {
+    const rents = await server.inject({ method: 'GET', url: '/api/v1/rents?lawdCd=26500&contractType=jeonse&limit=5' });
+    expect(rents.statusCode).toBe(200);
+    const rentBody = rents.json();
+    expect(rentBody.items.length).toBeLessThanOrEqual(5);
+    expect(rentBody.total).toBeGreaterThan(0);
+    for (const item of rentBody.items) {
+      expect(item.lawdCd).toBe('26500');
+      expect(item.contractType).toBe('jeonse');
+      expect(item.monthlyRentKrw).toBe(0);
+    }
+
+    const ratio = await server.inject({ method: 'GET', url: '/api/v1/market/jeonse-ratio?lawdCd=26290&months=12' });
+    expect(ratio.statusCode).toBe(200);
+    const ratioBody = ratio.json();
+    expect(ratioBody.series).toHaveLength(12);
+    expect(ratioBody.latest.ratioPct).toBeGreaterThan(50);
+    expect(ratioBody.series.every((row: { ratioPct: number }) => row.ratioPct === 0 || row.ratioPct > 50)).toBe(true);
+    expect(ratioBody.series.at(-1).month).toBe('2026-09');
+
+    const byComplex = await server.inject({
+      method: 'GET',
+      url: '/api/v1/market/jeonse-ratio?complexId=MOLIT-26290-001&months=6',
+    });
+    expect(byComplex.statusCode).toBe(200);
+    expect(byComplex.json().series).toHaveLength(6);
+
+    const missing = await server.inject({ method: 'GET', url: '/api/v1/market/jeonse-ratio?complexId=MOLIT-00000-999' });
+    expect(missing.statusCode).toBe(404);
+
+    const invalid = await server.inject({ method: 'GET', url: '/api/v1/rents?lawdCd=2629' });
+    expect(invalid.statusCode).toBe(400);
+  });
+
   it('OpenAPI 명세와 뷰어를 CDN 없이 서빙한다', async () => {
     const json = await server.inject({ method: 'GET', url: '/api-docs/openapi.json' });
     expect(json.statusCode).toBe(200);
     const document = json.json();
     expect(document.openapi).toBe('3.0.3');
-    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/transactions', '/api/v1/events']));
-    expect(openApiDocument.components.schemas.BehaviorEvent.properties.name.enum).toHaveLength(6);
+    expect(Object.keys(document.paths)).toEqual(
+      expect.arrayContaining(['/api/v1/transactions', '/api/v1/events', '/api/v1/rents', '/api/v1/market/jeonse-ratio']),
+    );
+    expect(openApiDocument.components.schemas.BehaviorEvent.properties.name.enum).toHaveLength(9);
 
     const html = await server.inject({ method: 'GET', url: '/api-docs' });
     expect(html.statusCode).toBe(200);

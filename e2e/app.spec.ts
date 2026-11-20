@@ -192,3 +192,74 @@ test('모바일 뷰포트에서도 탐색과 차트가 깨지지 않는다', asy
   const box = await chart.boundingBox();
   expect(box?.width ?? 0).toBeLessThanOrEqual(390);
 });
+
+test('매물 클릭·관심 등록이 인스펙터에 실시간으로 찍힌다', async ({ page }) => {
+  await expect(page.getByTestId('inspector')).toBeVisible();
+  await expect(page.getByTestId('inspector')).toContainText('이벤트 파이프라인');
+  await expect(page.getByTestId('stage-capture')).toContainText('건');
+
+  await navigateTo(page, /실거래 탐색/);
+  const firstRow = page.locator('[data-testid="transaction-table"] tbody tr').first();
+  await firstRow.click();
+  await expect(page.getByTestId('deal-detail')).toBeVisible();
+  await expect(page.getByTestId('deal-detail')).toContainText('계약');
+
+  await waitForEvent(page, 'listing_click', (event) => event.props.source === 'explore_table');
+  await expect(page.getByTestId('inspector-json')).toContainText('listing_click');
+  await expect(page.getByTestId('inspector-json')).toContainText('schema_version');
+
+  await page.getByTestId('save-listing').click();
+  await waitForEvent(page, 'listing_save', (event) => event.props.action === 'add');
+  await expect(page.getByTestId('inspector-json')).toContainText('listing_save');
+  await expect(page.getByRole('status')).toContainText('관심에 담았습니다');
+
+  // 퍼널 첫 단계가 채워지고, 화면 이동도 page_view로 기록된다.
+  await expect(page.getByTestId('inspector').locator('ol').last()).toContainText('대시보드 진입');
+});
+
+test('구별 리스크 화면이 전세가율·이상 거래 배지와 상세 신호를 보여준다', async ({ page }) => {
+  await navigateTo(page, /구별 리스크/);
+  await expect(page.getByRole('heading', { name: '구별 리스크' })).toBeVisible();
+  await expect(page.getByText('중위 전세가율', { exact: true })).toBeVisible();
+  await expect(page.getByText('고위험 단지', { exact: true })).toBeVisible();
+
+  for (const label of ['구별 중위 평당가', '구별 중위 전세가율', '구별 12개월 거래량']) {
+    const chart = page.locator(`svg[aria-label*="${label}"]`);
+    await expect(chart).toBeVisible();
+    expect(await chart.locator('rect').count()).toBeGreaterThanOrEqual(3);
+  }
+  await expect(page.locator('svg[aria-label*="전세가율 추이"] polyline').first()).toBeVisible();
+
+  const rows = page.locator('[data-testid="risk-table"] tbody tr');
+  await expect(rows).toHaveCount(16);
+  await expect(rows.first()).toContainText('%');
+
+  await page.getByTestId('risk-row-MOLIT-26290-005').click();
+  await expect(page.getByText('문현현대 상세')).toBeVisible();
+  await expect(page.getByText('전세가율', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('매매 중위', { exact: false }).first()).toBeVisible();
+  await waitForEvent(page, 'listing_click', (event) => event.props.source === 'risk');
+
+  // 수영구만 보기
+  await page.getByRole('button', { name: '수영구', exact: true }).click();
+  await expect(rows).toHaveCount(4);
+  await expect(page.getByText('삼익비치타운').first()).toBeVisible();
+});
+
+test('API 문서에서 OpenAPI 오퍼레이션과 스키마를 열람하고 Mock 응답을 실행한다', async ({ page }) => {
+  await navigateTo(page, /API 문서/);
+  await expect(page.getByRole('heading', { name: 'API 문서' })).toBeVisible();
+  await expect(page.getByText('OpenAPI 1.1.0', { exact: false })).toBeVisible();
+
+  await page.getByRole('button', { name: /\/api\/v1\/rents/ }).click();
+  await expect(page.getByRole('paragraph').filter({ hasText: '전월세 실거래 조회' })).toBeVisible();
+  await page.getByTestId('run-mock').click();
+  await expect(page.getByTestId('mock-response')).toContainText('"mock": true');
+  await expect(page.getByTestId('mock-response')).toContainText('depositKrw');
+  await waitForEvent(page, 'api_doc_mock_run', (event) => event.props.endpoint === '/api/v1/rents');
+
+  await page.getByRole('tab', { name: '스키마·ERD' }).click();
+  await expect(page.getByTestId('schema-table')).toContainText('deposit_krw');
+  await expect(page.getByTestId('schema-table')).toContainText('contract_type');
+  await expect(page.getByText('apt_rent_transactions.complex_id', { exact: false }).first()).toBeVisible();
+});
