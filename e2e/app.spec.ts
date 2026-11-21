@@ -202,7 +202,7 @@ test('모바일 뷰포트에서도 탐색과 차트가 깨지지 않는다', asy
 
 test('메인 화면 내비게이션에는 제품 화면만 걸려 있다', async ({ page }) => {
   const nav = page.getByRole('navigation', { name: '주요 화면' });
-  for (const label of ['시장 개요', '실거래 탐색', '단지 비교', '구별 리스크', '급매 레이더', '금리 민감도']) {
+  for (const label of ['시장 개요', '실거래 탐색', '단지 비교', '구별 리스크', '급매 레이더', '전세 안전진단', '입주 현금 계산', '전고점 하락률', '금리 민감도']) {
     await expect(nav.getByRole('button', { name: new RegExp(label) })).toBeVisible();
   }
   // 수집 파이프라인·행동 이벤트·API 문서·지표 정의서는 메뉴에 없다(주소로만 접근).
@@ -309,4 +309,84 @@ test('API 문서에서 OpenAPI 오퍼레이션과 스키마를 열람하고 Mock
   await expect(page.getByTestId('schema-table')).toContainText('deposit_krw');
   await expect(page.getByTestId('schema-table')).toContainText('contract_type');
   await expect(page.getByText('apt_rent_transactions.complex_id', { exact: false }).first()).toBeVisible();
+});
+
+test('전세 안전진단이 전세가율·최우선변제·HUG 가입 가능성을 판정한다', async ({ page }) => {
+  await navigateTo(page, /전세 안전진단/);
+  await expect(page.getByRole('heading', { name: '전세 안전진단' })).toBeVisible();
+
+  await page.getByTestId('jeonse-complex').selectOption('MOLIT-26290-001');
+  await page.getByTestId('jeonse-band').selectOption('60to85');
+  await expect(page.getByText(/84\.9\d㎡ \(25\.\d평\)/).first()).toBeVisible();
+
+  await page.getByTestId('jeonse-deposit').fill('40000');
+  await page.getByTestId('jeonse-senior').fill('0');
+  await expect(page.getByTestId('jeonse-verdict')).toContainText('전세가율');
+  await expect(page.getByTestId('jeonse-verdict')).toContainText('%');
+  await expect(page.getByTestId('jeonse-verdict')).toContainText('HUG 보증 가능 금액');
+
+  // 부산 최우선변제 기준(8,500만원 이하)을 넘는 보증금은 대상이 아니다.
+  await expect(page.getByText('최우선변제 대상 아님').first()).toBeVisible();
+  await expect(page.getByText('보증금 8,500만원 이하').first()).toBeVisible();
+
+  // 6억 보증금은 지방 HUG 한도 5억을 넘어 가입 불가 사유가 뜬다.
+  await page.getByTestId('jeonse-deposit').fill('60000');
+  await expect(page.getByTestId('jeonse-verdict')).toContainText('가입 불가');
+  await expect(page.getByText('보증금이 5억원 한도를 넘습니다').first()).toBeVisible();
+
+  await waitForEvent(
+    page,
+    'jeonse_safety_check',
+    (event) => event.props.complexId === 'MOLIT-26290-001' && event.props.hugEligible === false,
+  );
+});
+
+test('입주 현금 계산이 취득세·중개보수·DSR 대출 한도를 합산하고 생애최초 감면을 반영한다', async ({ page }) => {
+  await navigateTo(page, /입주 현금 계산/);
+  await expect(page.getByRole('heading', { name: '입주 현금 계산' })).toBeVisible();
+
+  await page.getByTestId('cash-complex').selectOption('MOLIT-26290-001');
+  await page.getByTestId('cash-price').fill('62800');
+  await page.getByTestId('cash-income').fill('6000');
+
+  await expect(page.getByTestId('cash-result')).toContainText('입주에 필요한 자기자본');
+  await expect(page.getByTestId('cash-result')).toContainText('취득세 합계');
+  await expect(page.getByTestId('cash-result')).toContainText('중개보수');
+  await expect(page.getByText('LTV 한도', { exact: true })).toBeVisible();
+  await expect(page.getByText('DSR 한도', { exact: true })).toBeVisible();
+  await expect(page.getByText(/84\.9\d㎡ \(25\.\d평\)/).first()).toBeVisible();
+
+  const before = await page.getByTestId('cash-result').innerText();
+  await page.getByTestId('cash-first-time').check();
+  await expect.poll(async () => page.getByTestId('cash-result').innerText()).not.toBe(before);
+  await waitForEvent(page, 'cash_plan_calculate', (event) => event.props.firstTimeBuyer === true);
+});
+
+test('전고점 하락률 랭킹이 350세대+ 단지를 ㎡ (평) 기준으로 비교하고 필터·상세를 제공한다', async ({ page }) => {
+  await navigateTo(page, /전고점 하락률/);
+  await expect(page.getByRole('heading', { name: '전고점 대비 하락률', exact: true })).toBeVisible();
+
+  const rows = page.locator('[data-testid="drawdown-table"] tbody tr');
+  await expect.poll(async () => rows.count()).toBe(30);
+  await expect(page.getByTestId('drawdown-count')).toContainText('30곳');
+  await expect(rows.first()).toContainText(/㎡ \(\d+(\.\d+)?평\)/);
+  await expect(rows.first()).toContainText('%');
+
+  // 수영구만 보기 → 350세대 이상 4곳
+  await page.getByTestId('drawdown-district-26500').click();
+  await expect.poll(async () => rows.count()).toBe(4);
+  await expect(page.getByTestId('drawdown-table')).toContainText('수영구');
+  await waitForEvent(
+    page,
+    'drawdown_filter_change',
+    (event) => Array.isArray(event.props.lawdCds) && (event.props.lawdCds as string[]).includes('26500'),
+  );
+
+  await page.getByTestId('drawdown-band').selectOption('60to85');
+  await expect.poll(async () => rows.count()).toBe(4);
+
+  await rows.first().click();
+  await expect(page.getByTestId('drawdown-detail')).toContainText('전고점');
+  await expect(page.getByTestId('drawdown-detail')).toContainText('평당가 낙폭');
+  await waitForEvent(page, 'listing_click', (event) => event.props.source === 'drawdown');
 });

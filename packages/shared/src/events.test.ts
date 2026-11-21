@@ -18,7 +18,7 @@ function event(partial: Partial<BehaviorEventInput> & Pick<BehaviorEventInput, '
 }
 
 describe('behaviorEventSchema', () => {
-  it('정의된 11종 이벤트를 모두 허용한다', () => {
+  it('정의된 14종 이벤트를 모두 허용한다', () => {
     const samples: BehaviorEventInput[] = [
       event({ name: 'page_view', props: { route: '/overview', isInitialLoad: true } }),
       event({
@@ -65,6 +65,40 @@ describe('behaviorEventSchema', () => {
           repayment: 'equal_principal_interest',
         },
       }),
+      event({
+        name: 'jeonse_safety_check',
+        props: {
+          complexId: 'MOLIT-26290-001',
+          aptName: '문현베스티움',
+          areaM2: 84.98,
+          depositKrw: 400_000_000,
+          seniorMortgageKrw: 0,
+          jeonseRatioPct: 66.7,
+          verdict: 'safe',
+          hugEligible: true,
+        },
+      }),
+      event({
+        name: 'cash_plan_calculate',
+        props: {
+          complexId: 'MOLIT-26290-001',
+          priceKrw: 600_000_000,
+          loanKrw: 420_000_000,
+          cashNeededKrw: 189_240_000,
+          annualIncomeKrw: 60_000_000,
+          firstTimeBuyer: false,
+        },
+      }),
+      event({
+        name: 'drawdown_filter_change',
+        props: {
+          lawdCds: ['26290'],
+          areaBand: '60to85',
+          minHouseholds: 350,
+          onlyDeclined: true,
+          resultCount: 8,
+        },
+      }),
       event({ name: 'pipeline_source_inspect', props: { sourceId: 'molit_apt_trade', panel: 'sources' } }),
       event({
         name: 'listing_click',
@@ -109,7 +143,7 @@ describe('behaviorEventSchema', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('이벤트 카탈로그가 9종 이벤트와 5단계 퍼널을 모두 설명한다', () => {
+  it('이벤트 카탈로그가 14종 이벤트와 5단계 퍼널을 모두 설명한다', () => {
     expect(EVENT_CATALOG).toHaveLength(EVENT_NAMES.length);
     expect(FUNNEL_STEPS).toHaveLength(5);
     for (const definition of EVENT_CATALOG) {

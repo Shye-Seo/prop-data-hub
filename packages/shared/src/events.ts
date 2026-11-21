@@ -57,7 +57,7 @@ const listingClickProps = z.object({
   dealHash: z.string().max(80).optional(),
   priceKrw: z.number().int().positive(),
   areaM2: z.number().positive().max(500),
-  source: z.enum(['explore_table', 'overview', 'compare', 'risk', 'radar']),
+  source: z.enum(['explore_table', 'overview', 'compare', 'risk', 'radar', 'drawdown']),
   dealScore: z.number().int().min(0).max(100).optional(),
   jeonseRatioPct: z.number().min(0).max(200).optional(),
 });
@@ -85,6 +85,34 @@ const rateScenarioProps = z.object({
   monthlyPaymentKrw: z.number().int().nonnegative().optional(),
 });
 
+const jeonseSafetyProps = z.object({
+  complexId: z.string().min(1).max(64),
+  aptName: z.string().min(1).max(80),
+  areaM2: z.number().positive().max(500),
+  depositKrw: z.number().int().nonnegative(),
+  seniorMortgageKrw: z.number().int().nonnegative(),
+  jeonseRatioPct: z.number().min(0).max(300),
+  verdict: z.enum(['safe', 'caution', 'risk', 'danger', 'unknown']),
+  hugEligible: z.boolean(),
+});
+
+const cashPlanProps = z.object({
+  complexId: z.string().min(1).max(64).optional(),
+  priceKrw: z.number().int().positive(),
+  loanKrw: z.number().int().nonnegative(),
+  cashNeededKrw: z.number().int().nonnegative(),
+  annualIncomeKrw: z.number().int().nonnegative(),
+  firstTimeBuyer: z.boolean(),
+});
+
+const drawdownFilterProps = z.object({
+  lawdCds: z.array(z.string().regex(/^\d{5}$/)).max(8),
+  areaBand: z.enum(['under60', '60to85', '85to115', 'over115', 'all']),
+  minHouseholds: z.number().int().min(0).max(20_000),
+  onlyDeclined: z.boolean(),
+  resultCount: z.number().int().nonnegative(),
+});
+
 const pipelineSourceProps = z.object({
   sourceId: z.string().min(1).max(64),
   runId: z.string().max(64).optional(),
@@ -109,6 +137,9 @@ export const EVENT_PROP_SCHEMAS = {
   listing_save: listingSaveProps,
   api_doc_mock_run: apiDocMockProps,
   rate_scenario_adjust: rateScenarioProps,
+  jeonse_safety_check: jeonseSafetyProps,
+  cash_plan_calculate: cashPlanProps,
+  drawdown_filter_change: drawdownFilterProps,
   pipeline_source_inspect: pipelineSourceProps,
   funnel_step_complete: funnelStepProps,
 } as const;
@@ -257,6 +288,36 @@ export const EVENT_CATALOG: EventDefinition[] = [
     trigger: '입력 변경 후 400ms 디바운스 또는 상환방식 변경 시',
     props: ['priceKrw', 'loanKrw', 'annualRatePct', 'termMonths', 'repayment', 'monthlyPaymentKrw'],
     kpi: ['시나리오 사용 세션', '평균 금리 구간', '리포트 저장 전환율'],
+    retentionDays: 400,
+    owner: '프로덕트 분석',
+  },
+  {
+    name: 'jeonse_safety_check',
+    label: '전세 안전진단',
+    description: '희망 보증금·선순위 근저당을 최근 매매가와 대조해 전세가율·최우선변제·HUG 가입 가능성을 판정한 시점.',
+    trigger: '입력이 바뀐 뒤 500ms 디바운스(진단 결과가 계산되었을 때)',
+    props: ['complexId', 'aptName', 'areaM2', 'depositKrw', 'seniorMortgageKrw', 'jeonseRatioPct', 'verdict', 'hugEligible'],
+    kpi: ['전세 진단 세션', '위험 판정 비율', 'HUG 가입 불가 사유 분포'],
+    retentionDays: 400,
+    owner: '프로덕트 분석',
+  },
+  {
+    name: 'cash_plan_calculate',
+    label: '입주 현금 계산',
+    description: '매매가·소득·대출 조건을 넣어 취득세·중개보수·대출 한도와 필요 자기자본을 계산한 시점.',
+    trigger: '입력이 바뀐 뒤 400ms 디바운스(계산 결과가 갱신되었을 때)',
+    props: ['complexId', 'priceKrw', 'loanKrw', 'cashNeededKrw', 'annualIncomeKrw', 'firstTimeBuyer'],
+    kpi: ['현금 계산 세션', '소득 구간별 필요 현금', '생애최초 감면 사용 비중'],
+    retentionDays: 400,
+    owner: '프로덕트 분석',
+  },
+  {
+    name: 'drawdown_filter_change',
+    label: '하락률 조건 변경',
+    description: '전고점 대비 하락률 랭킹에서 구·면적대·세대수 조건을 바꾼 시점. 하락 단지 탐색 수요를 본다.',
+    trigger: '랭킹 필터 확정 시 1회(800ms 디바운스)',
+    props: ['lawdCds', 'areaBand', 'minHouseholds', 'onlyDeclined', 'resultCount'],
+    kpi: ['하락률 화면 세션', '면적대별 조회', '하락 단지 클릭 전환'],
     retentionDays: 400,
     owner: '프로덕트 분석',
   },

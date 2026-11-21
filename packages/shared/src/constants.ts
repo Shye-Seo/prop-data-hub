@@ -22,6 +22,9 @@ export const EVENT_NAMES = [
   'listing_save',
   'api_doc_mock_run',
   'rate_scenario_adjust',
+  'jeonse_safety_check',
+  'cash_plan_calculate',
+  'drawdown_filter_change',
   'pipeline_source_inspect',
   'funnel_step_complete',
 ] as const;

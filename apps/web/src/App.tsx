@@ -7,6 +7,9 @@ import Explore from './pages/Explore';
 import Compare from './pages/Compare';
 import RegionRisk from './pages/RegionRisk';
 import Radar from './pages/Radar';
+import JeonseSafety from './pages/JeonseSafety';
+import CashPlan from './pages/CashPlan';
+import Drawdown from './pages/Drawdown';
 import RateLab from './pages/RateLab';
 import Pipeline from './pages/Pipeline';
 import Events from './pages/Events';
@@ -98,6 +101,9 @@ export default function App() {
           {route === 'compare' && <Compare />}
           {route === 'risk' && <RegionRisk />}
           {route === 'radar' && <Radar />}
+          {route === 'jeonse' && <JeonseSafety />}
+          {route === 'cash' && <CashPlan />}
+          {route === 'drawdown' && <Drawdown />}
           {route === 'rate' && <RateLab />}
           {route === 'pipeline' && <Pipeline />}
           {route === 'events' && <Events />}
