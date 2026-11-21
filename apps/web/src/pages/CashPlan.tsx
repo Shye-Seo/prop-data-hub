@@ -185,12 +185,26 @@ export default function CashPlan() {
                 data-testid="cash-price"
               />
             </Field>
-            <p className="-mt-2 text-[10px] leading-relaxed text-slate-400">
-              {customPrice
-                ? '직접 입력값을 쓰고 있습니다. 단지를 바꿔도 매매가는 유지됩니다.'
-                : reference
-                  ? `최근 6개월 중위 ${formatKrwKorean(reference.medianPriceKrw)} · ${reference.sampleCount}건 · ${formatMonth(reference.latestMonth)}`
-                  : '최근 6개월 표본이 없어 직접 입력이 필요합니다.'}
+            <p className="-mt-2 flex flex-wrap items-center gap-2 text-[10px] leading-relaxed text-slate-400">
+              <span>
+                {customPrice
+                  ? '직접 입력값을 쓰고 있습니다. 단지를 바꿔도 매매가는 유지됩니다.'
+                  : reference
+                    ? `최근 6개월 중위 ${formatKrwKorean(reference.medianPriceKrw)} · ${reference.sampleCount}건 · ${formatMonth(reference.latestMonth)}`
+                    : '최근 6개월 표본이 없어 직접 입력이 필요합니다.'}
+              </span>
+              {customPrice && reference && (
+                <button
+                  type="button"
+                  className="underline decoration-dotted text-teal-700"
+                  onClick={() => {
+                    setCustomPrice(false);
+                    setPriceManwon(String(Math.round(reference.medianPriceKrw / 10_000)));
+                  }}
+                >
+                  시세 자동으로
+                </button>
+              )}
             </p>
 
             <Field label="연소득" hint={formatKrwKorean(annualIncomeKrw)}>
