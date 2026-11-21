@@ -12,7 +12,7 @@ function event(partial: Partial<TrackedEvent> & Pick<TrackedEvent, 'name'>): Tra
     userPseudoId: 'user-00000001',
     page: '/overview',
     props: {},
-    schemaVersion: '1.1.0',
+    schemaVersion: '1.2.0',
     delivery: 'local',
     ...partial,
   };
@@ -75,7 +75,7 @@ describe('buildInspectorSnapshot', () => {
   it('payload JSON은 DB 컬럼명에 맞춘 키로 보여준다', () => {
     const json = JSON.parse(eventPayloadJson(events[2]!));
     expect(json.name).toBe('listing_click');
-    expect(json.schema_version).toBe('1.1.0');
+    expect(json.schema_version).toBe('1.2.0');
     expect(json.props.complexId).toBe('MOLIT-26290-001');
     expect(json.event_id).toContain('…');
   });

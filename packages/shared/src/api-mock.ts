@@ -1,4 +1,5 @@
 import { SAMPLE_END_MONTH, SAMPLE_MONTHS, buildSampleDataset, type SampleDataset } from './fixtures/sample-dataset';
+import { EVENT_SCHEMA_VERSION } from './constants';
 import { aggregateMonthly, latestMacroValue, recentMonths } from './metrics';
 import { aggregateRatioSeries, jeonseRatioSeries } from './risk';
 import {
@@ -270,7 +271,7 @@ export function mockApiResponse(request: MockRequest, dataset: SampleDataset = b
       inserted: accepted,
       duplicates: 0,
       rejectedCount: 0,
-      schemaVersion: '1.1.0',
+      schemaVersion: EVENT_SCHEMA_VERSION,
     });
   }
 
