@@ -496,7 +496,7 @@ export default function Radar() {
           </div>
         </Card>
 
-        <Card title="저장한 규칙" subtitle="브라우저에 보관됩니다(데모). 서버 모드에서는 alert_rules 테이블이 원본입니다.">
+        <Card title="저장한 규칙" subtitle="이 브라우저에 보관됩니다">
           {rules.length === 0 ? (
             <EmptyState title="저장한 규칙이 없습니다" description="조건을 정하고 '알림 규칙 저장'을 누르면 여기에 쌓입니다." />
           ) : (

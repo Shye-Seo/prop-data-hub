@@ -4,8 +4,12 @@
 TypeScript 풀스택 모노레포입니다. 공공데이터 수집 파이프라인, PostgreSQL 스키마, REST API, React 대시보드,
 행동 이벤트 수집 체계를 한 저장소에서 실행합니다. 전월세 표본으로 전세가율·이상 거래 리스크를 계산하고,
 부산 6개 구의 **350세대 이상 단지 매매가를 최근 중위가와 비교해 급매·저평가만 모으는 레이더**와 맞춤 알림 규칙을
-포함합니다. 면접관이 라이브 데모에서 직접 눌러 보는 이벤트 파이프라인 인스펙터와 API 문서(Mock 실행)도 같은
-저장소에 있습니다.
+포함합니다. 제품 화면은 **시장 개요 · 실거래 탐색 · 단지 비교 · 구별 리스크 · 급매 레이더 · 금리 민감도** 여섯 개이고,
+수집 파이프라인·행동 이벤트·API 문서·지표 정의서는 운영 점검용 화면으로서 메뉴에 걸지 않고 주소
+(`#pipeline`·`#events`·`#api`·`#dictionary`)로만 엽니다.
+
+> 화면 표기 원칙: 제품 화면에는 수집 파이프라인 단계·소스 파일 형식·테이블/컬럼명 같은 내부 구현 표기를 두지 않습니다.
+> 라이브 데모는 백엔드 없이 번들 표본으로 동작하며, 표본의 범위와 한계는 이 README에서만 다룹니다.
 
 - 라이브 데모: <https://shye-seo.github.io/prop-data-hub/> (정적 빌드, 백엔드 없이 동작)
   — 저장소 Settings › Pages에서 소스를 `main` / `/docs`로 지정하면 활성화됩니다. 앱 권한상 Pages 설정 API는 403이라
@@ -20,16 +24,16 @@ TypeScript 풀스택 모노레포입니다. 공공데이터 수집 파이프라�
 | pnpm 기반 모노레포 | `pnpm-workspace.yaml`, `apps/*`, `packages/shared`, `infra/` | `pnpm install` |
 | 공공데이터 수집 파이프라인 | `apps/collector`, `packages/shared/src/normalize` | `pnpm --filter @prop/collector once` |
 | 멱등 업서트·재시도·DLQ | `infra/postgres/init.sql`, `apps/collector/src/pipeline.ts` | `pnpm --filter @prop/collector test` |
-| 출처·기준일 메타데이터 | `ingestion_sources`, `as_of_date`, `collected_at` 컬럼과 화면 | 데모 › 수집 파이프라인 |
-| 지표·이벤트 정의 | `packages/shared/src/events.ts`(9종 이벤트, 5단계 퍼널) | 데모 › 지표 정의서 |
+| 출처·기준일 메타데이터 | `ingestion_sources`, `as_of_date`, `collected_at` 컬럼과 화면 | 운영 화면 `#pipeline` |
+| 지표·이벤트 정의 | `packages/shared/src/events.ts`(9종 이벤트, 5단계 퍼널) | 운영 화면 `#dictionary` |
 | 전월세 수집·전세가율 | `apps/collector/src/sources/molit-rent.ts`, `packages/shared/src/risk.ts`, `v_jeonse_ratio_monthly` | `pnpm --filter @prop/collector once -- --rent` · 데모 › 구별 리스크 |
 | 이상치·리스크 스코어링 | `packages/shared/src/risk.ts`(수정 z-score·급락·배점) | `pnpm --filter @prop/shared test` |
-| 실시간 파이프라인 인스펙터 | `apps/web/src/components/EventInspector.tsx`, `src/lib/inspector.ts` | 데모 하단 패널 |
-| 인터랙티브 API 문서 | `packages/shared/src/openapi.ts`, `schema-summary.ts`, `api-mock.ts`, `apps/web/src/pages/ApiDocs.tsx` | 데모 › API 문서 |
+| 실시간 파이프라인 인스펙터 | `apps/web/src/components/EventInspector.tsx`, `src/lib/inspector.ts` | 운영 점검용 컴포넌트(제품 화면 미장착) |
+| 인터랙티브 API 문서 | `packages/shared/src/openapi.ts`, `schema-summary.ts`, `api-mock.ts`, `apps/web/src/pages/ApiDocs.tsx` | 운영 화면 `#api` |
 | 행동 이벤트 수집 API | `apps/api/src/routes/events.ts`, `user_behavior_events` | `POST /api/v1/events` |
-| 실시간 퍼널·이벤트 뷰어 | `apps/web/src/pages/Events.tsx`, `src/lib/tracker.ts` | 데모 › 행동 이벤트 |
+| 실시간 퍼널·이벤트 뷰어 | `apps/web/src/pages/Events.tsx`, `src/lib/tracker.ts` | 운영 화면 `#events` |
 | PostgreSQL DDL·인덱스·파티션 | `infra/postgres/init.sql` | `apps/api/test/pg-store.integration.test.ts` |
-| REST API + OpenAPI 3.0 | `apps/api/src/server.ts`, `packages/shared/src/openapi.ts` | `http://localhost:8080/api-docs` · 데모 › API 문서 |
+| REST API + OpenAPI 3.0 | `apps/api/src/server.ts`, `packages/shared/src/openapi.ts` | `http://localhost:8080/api-docs` · 운영 화면 `#api` |
 | Docker Compose | `docker-compose.yml`, `infra/docker/*` | `docker compose up --build` |
 | AWS 아키텍처 | `infra/aws/` (CloudFormation + 운영 문서) | 배포 전 문서 |
 | 350세대+ 매매 급매 레이더 | `packages/shared/src/radar.ts`, `GET /api/v1/radar/deals`, `apps/web/src/pages/Radar.tsx` | 데모 › 급매 레이더 |
@@ -271,8 +275,8 @@ curl -X POST "http://localhost:8080/api/v1/radar/alert-rules" -H 'content-type: 
 
 화면 하단의 **이벤트 파이프라인 인스펙터**는 매물 클릭·필터 변경·관심 등록 때마다 같은 이벤트가
 수집 → 스키마 검증 → 배치 버퍼 → 적재(IndexedDB/API) → 퍼널 집계로 흐르는 것을 단계별 건수, JSON payload,
-세션 퍼널 전환율로 즉시 보여줍니다. 데모에서 직접 눌러 확인할 수 있고, 같은 계산을 `apps/web/src/lib/inspector.ts`에서
-테스트로 고정했습니다.
+세션 퍼널 전환율로 즉시 보여줍니다. 제품 콘솔에는 마운트하지 않고(내부 상태 노출), 운영 점검 때만 붙여 씁니다.
+같은 계산은 `apps/web/src/lib/inspector.ts`에서 테스트로 고정했습니다.
 
 ## 7. 데이터베이스
 
@@ -333,12 +337,12 @@ curl -X POST "http://localhost:8080/api/v1/radar/alert-rules" -H 'content-type: 
   이상 거래 표본. 차트는 외부 CDN 없는 순수 SVG입니다.
 - 급매 레이더: 350세대 이상 토글, 구·평형대·목표 할인율·최소 점수 필터, 매물 점수와 근거 신호, 기준 시세 대비
   할인율, 전세가율·갭, 맞춤 알림 규칙 저장과 카카오 알림톡·웹훅 payload 미리보기
-- API 문서: OpenAPI 3.0 오퍼레이션 목록, 파라미터·요청 예시, 예시 응답 실행(Mock), PostgreSQL 스키마·관계(ERD 요약)
-- 이벤트 파이프라인 인스펙터: 모든 화면 하단에서 이벤트 적재·검증·버퍼·집계 상태와 JSON payload, 세션 퍼널 확인
+- API 문서(운영 화면 `#api`): OpenAPI 3.0 오퍼레이션 목록, 파라미터·요청 예시, 예시 응답 실행(Mock), PostgreSQL 스키마·관계(ERD 요약)
+- 이벤트 파이프라인 인스펙터(운영 점검용): 이벤트 적재·검증·버퍼·집계 상태와 JSON payload, 세션 퍼널 확인 — 제품 화면에는 마운트하지 않습니다.
 - 금리 민감도: 매매가·자기자본·금리·기간·상환방식별 월 상환액, 총 이자, DSR 필요 소득
-- 수집 파이프라인: 소스 메타데이터, 실행 이력, 배치 태스크, DLQ 재시도(시뮬레이션)
-- 행동 이벤트: 실시간 퍼널·이벤트 스트림·스키마 예시
-- 지표 정의서: 이벤트·퍼널·지표·품질 규칙·API 표면
+- 수집 파이프라인(운영 화면 `#pipeline`): 소스 메타데이터, 실행 이력, 배치 태스크, DLQ 재시도(시뮬레이션)
+- 행동 이벤트(운영 화면 `#events`): 실시간 퍼널·이벤트 스트림·스키마 예시
+- 지표 정의서(운영 화면 `#dictionary`): 이벤트·퍼널·지표·품질 규칙·API 표면
 
 빌드:
 

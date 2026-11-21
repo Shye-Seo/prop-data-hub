@@ -4,8 +4,10 @@ import { buildInspectorSnapshot, eventPayloadJson, funnelWidths } from '../lib/i
 import { formatRelativeTime } from '../lib/format';
 
 /**
- * 행동 이벤트 파이프라인 인스펙터.
+ * 행동 이벤트 파이프라인 인스펙터 (운영 점검용).
  *
+ * 제품 콘솔 화면에는 마운트하지 않는다. App.tsx에서 걷어 냈고, 이벤트 수집 자체는 tracker가 그대로 한다.
+ * 내부 스키마·큐 적재 상태를 봐야 할 때만 운영 점검용으로 붙여 쓴다.
  * 화면 어디서든 매물 클릭·필터 변경·관심 등록을 하면 이 패널의 JSON과 퍼널 숫자가 즉시 바뀐다.
  * 데이터는 브라우저 트래커(IndexedDB)에서 오고, 서버 모드(VITE_API_BASE)면 배치 전송까지 보여준다.
  * 패널은 화면 하단에 고정되며, 데스크톱은 펼친 상태로 시작하고 모바일은 접어 둔다.

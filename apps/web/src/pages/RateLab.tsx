@@ -149,7 +149,7 @@ export default function RateLab() {
               </div>
             </div>
             <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
-              기준금리 {baseRate.toFixed(2)}% · 주담대 {mortgageRate.toFixed(2)}% (ECOS 월간, 말일 기준)
+              기준금리 {baseRate.toFixed(2)}% · 주담대 {mortgageRate.toFixed(2)}% (월간 지표, 말일 기준)
             </div>
           </div>
         </Card>

@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FUNNEL_STEPS } from '@prop/shared';
-import { Card, Kpi, StatusBadge, DataNote } from '../components/ui';
+import { Card, Kpi, DataNote } from '../components/ui';
 import { BarChart, LineChart, Sparkline } from '../components/charts';
 import { DISTRICT_OPTIONS, MONTHS, REGION_OPTIONS, latestMacro, regionKpi, seriesForDong, seriesForLawdCd, dataset } from '../lib/dataset';
 import { formatKrwKorean, formatMonth, formatPct, formatPyeongPrice } from '../lib/format';
@@ -143,7 +142,7 @@ export default function Overview({ navigate }: { navigate: (route: RouteKey) => 
         </Card>
 
         <div className="space-y-4">
-          <Card title="금리·물가지표" subtitle="한국은행 ECOS · 월간 지표는 말일 기준">
+          <Card title="금리·물가지표" subtitle="한국은행 월간 지표 · 말일 기준">
             <div className="space-y-3">
               <MacroRow
                 label="기준금리"
@@ -165,25 +164,27 @@ export default function Overview({ navigate }: { navigate: (route: RouteKey) => 
               />
             </div>
             <DataNote>
-              금리 시나리오는 위 주담대 금리를 기준값으로 시작합니다. 지표 기준일과 수집 시점을 함께 저장해 화면에 표시합니다.
+              금리 시나리오는 위 주담대 금리를 기준값으로 시작합니다. 각 지표의 기준일을 함께 표시합니다.
             </DataNote>
           </Card>
 
-          <Card title="최근 수집 실행" subtitle="부분 성공·실패는 실행 상세에서 태스크 단위로 확인" action={
-            <button type="button" className="text-xs font-semibold text-teal-700" onClick={() => navigate('pipeline')}>
-              전체 보기
-            </button>
-          }>
+          <Card title="최근 갱신 현황" subtitle="가장 최근에 반영된 두 구간">
             <ul className="divide-y divide-slate-100">
               {recentRuns.map((run) => (
                 <li key={run.runId} className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
                   <div className="min-w-0">
-                    <p className="truncate text-xs font-medium text-slate-700">{run.sourceId === 'molit_apt_trade' ? '실거래가' : 'ECOS 지표'} · {run.jobType}</p>
+                    <p className="truncate text-xs font-medium text-slate-700">
+                      {run.sourceId === 'molit_apt_trade' ? '매매 실거래' : '금리·물가 지표'}
+                    </p>
                     <p className="num truncate text-[11px] text-slate-400">{run.startedAt.slice(0, 16).replace('T', ' ')}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2 text-right">
                     <span className="num text-[11px] text-slate-500">{run.recordsUpserted.toLocaleString('ko-KR')}건</span>
-                    <StatusBadge status={run.status} />
+                    <span
+                      className={`rounded-full border px-1.5 py-0.5 text-[10px] ${run.status === 'succeeded' ? 'border-teal-200 bg-teal-50 text-teal-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}
+                    >
+                      {run.status === 'succeeded' ? '반영 완료' : '부분 반영'}
+                    </span>
                   </div>
                 </li>
               ))}
@@ -203,13 +204,12 @@ export default function Overview({ navigate }: { navigate: (route: RouteKey) => 
           />
         </Card>
 
-        <Card title="이 화면의 데이터가 만들어지는 과정" subtitle="수집 → 정규화 → 멱등 업서트 → 지표 계산">
+        <Card title="지표를 읽는 법" subtitle="같은 기간·같은 면적 기준으로 비교합니다">
           <ol className="space-y-3">
             {[
-              ['공공데이터 수집', '국토교통부 실거래가 XML/JSON, 한국은행 ECOS 월간 지표'],
-              ['정규화·검증', '금액 만원→원 환산, 계약일 보정, 해제 거래 표시, 법정동 코드 매핑'],
-              ['멱등 업서트', 'deal_hash 충돌 시 값만 갱신해 재수집 중복을 막음'],
-              ['지표 계산', '중위가·평당가·거래량, 기준일(as-of) 메타데이터 유지'],
+              ['중위 매매가', '그 달·그 지역 거래 금액의 가운데 값입니다. 평균 대신 중위값을 써서 혹은 거래 한 건이 시세를 끌고 가지 않습니다.'],
+              ['평당가', '거래금액을 전용면적(3.3058㎡ = 1평)으로 나눠 면적이 다른 단지를 같은 자로 비교합니다.'],
+              ['전세가율', '매매 중위가 대비 전세 보증금 비중입니다. 높을수록 보증금 반환 위험이 커집니다.'],
             ].map(([title, description], index) => (
               <li key={title} className="flex gap-3">
                 <span className="num mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink-800 text-[10px] font-semibold text-white">
@@ -222,16 +222,6 @@ export default function Overview({ navigate }: { navigate: (route: RouteKey) => 
               </li>
             ))}
           </ol>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {FUNNEL_STEPS.slice(0, 4).map((step) => (
-              <span key={step.key} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
-                {step.label}
-              </span>
-            ))}
-            <button type="button" className="text-[10px] font-semibold text-teal-700" onClick={() => navigate('dictionary')}>
-              정의서 보기 →
-            </button>
-          </div>
         </Card>
       </div>
     </div>

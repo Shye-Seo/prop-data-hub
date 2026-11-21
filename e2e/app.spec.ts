@@ -29,16 +29,21 @@ async function navigateTo(page: Page, label: RegExp) {
   await page.locator('aside').getByRole('button', { name: label }).click();
 }
 
+/** 운영용 화면은 메뉴에 걸려 있지 않다. 주소로 직접 연다. */
+async function openOperatorRoute(page: Page, hash: string) {
+  await page.goto(`/#${hash}`);
+}
+
 test.beforeEach(async ({ page }) => {
   await openApp(page);
 });
 
-test('개요 화면이 KPI·차트·수집 상태를 렌더링한다', async ({ page }) => {
+test('개요 화면이 KPI·차트·지표 기준일을 렌더링한다', async ({ page }) => {
   await expect(page.getByText('관측 거래').first()).toBeVisible();
   await expect(page.getByText('최근월 중위 매매가')).toBeVisible();
   await expect(page.getByRole('img', { name: /지역별 중위 매매가/ })).toBeVisible();
-  await expect(page.getByText('최근 수집 실행')).toBeVisible();
-  await expect(page.getByText('한국은행 ECOS', { exact: false }).first()).toBeVisible();
+  await expect(page.getByText('최근 갱신 현황')).toBeVisible();
+  await expect(page.getByText('한국은행 월간 지표', { exact: false }).first()).toBeVisible();
 
   // 차트에는 지역 3개의 선이 그려진다.
   const polylines = page.locator('svg[aria-label*="지역별 중위 매매가"] polyline');
@@ -119,7 +124,7 @@ test('금리 시뮬레이터가 입력에 따라 상환액을 다시 계산하�
 });
 
 test('수집 파이프라인 콘솔에서 출처 확인·실행·DLQ 재시도가 동작한다', async ({ page }) => {
-  await navigateTo(page, /수집 파이프라인/);
+  await openOperatorRoute(page, 'pipeline');
   await expect(page.getByRole('heading', { name: '수집 파이프라인' })).toBeVisible();
 
   const runRows = page.locator('[data-testid="run-table"] tbody tr');
@@ -145,7 +150,7 @@ test('수집 파이프라인 콘솔에서 출처 확인·실행·DLQ 재시도�
 });
 
 test('행동 이벤트 화면에서 퍼널·스트림·스키마가 실시간으로 갱신된다', async ({ page }) => {
-  await navigateTo(page, /행동 이벤트/);
+  await openOperatorRoute(page, 'events');
   await expect(page.getByRole('heading', { name: '행동 이벤트' })).toBeVisible();
 
   const funnel = page.getByTestId('funnel').locator('li');
@@ -168,7 +173,7 @@ test('행동 이벤트 화면에서 퍼널·스트림·스키마가 실시간으
 });
 
 test('새로고침 후에도 로컬 이벤트 스트림이 유지된다', async ({ page }) => {
-  await navigateTo(page, /행동 이벤트/);
+  await openOperatorRoute(page, 'events');
   await page.getByRole('button', { name: '+ 지역 조건 변경' }).click();
   const before = Number((await page.getByTestId('total-events').innerText()).replace(/[^0-9]/g, ''));
   expect(before).toBeGreaterThan(0);
@@ -193,28 +198,26 @@ test('모바일 뷰포트에서도 탐색과 차트가 깨지지 않는다', asy
   expect(box?.width ?? 0).toBeLessThanOrEqual(390);
 });
 
-test('매물 클릭·관심 등록이 인스펙터에 실시간으로 찍힌다', async ({ page }) => {
-  await expect(page.getByTestId('inspector')).toBeVisible();
-  await expect(page.getByTestId('inspector')).toContainText('이벤트 파이프라인');
-  await expect(page.getByTestId('stage-capture')).toContainText('건');
-
+test('메인 화면 내비게이션에는 제품 화면만 걸려 있다', async ({ page }) => {
+  const nav = page.getByRole('navigation', { name: '주요 화면' });
+  for (const label of ['시장 개요', '실거래 탐색', '단지 비교', '구별 리스크', '급매 레이더', '금리 민감도']) {
+    await expect(nav.getByRole('button', { name: new RegExp(label) })).toBeVisible();
+  }
+  // 수집 파이프라인·행동 이벤트·API 문서·지표 정의서는 메뉴에 없다(주소로만 접근).
+  for (const hidden of ['수집 파이프라인', '행동 이벤트', 'API 문서', '지표 정의서']) {
+    await expect(nav.getByRole('button', { name: new RegExp(hidden) })).toHaveCount(0);
+  }
+  // 하단 이벤트 인스펙터도 제품 화면에서는 내려갔다.
+  await expect(page.getByTestId('inspector')).toHaveCount(0);
+  // 수집은 계속된다 — 매물 클릭 이벤트는 운영 화면에서 확인할 수 있다.
   await navigateTo(page, /실거래 탐색/);
-  const firstRow = page.locator('[data-testid="transaction-table"] tbody tr').first();
-  await firstRow.click();
-  await expect(page.getByTestId('deal-detail')).toBeVisible();
-  await expect(page.getByTestId('deal-detail')).toContainText('계약');
-
+  await page.locator('[data-testid="transaction-table"] tbody tr').first().click();
   await waitForEvent(page, 'listing_click', (event) => event.props.source === 'explore_table');
-  await expect(page.getByTestId('inspector-json')).toContainText('listing_click');
-  await expect(page.getByTestId('inspector-json')).toContainText('schema_version');
+  await expect(page.getByTestId('deal-detail')).toContainText('계약');
 
   await page.getByTestId('save-listing').click();
   await waitForEvent(page, 'listing_save', (event) => event.props.action === 'add');
-  await expect(page.getByTestId('inspector-json')).toContainText('listing_save');
   await expect(page.getByRole('status')).toContainText('관심에 담았습니다');
-
-  // 퍼널 첫 단계가 채워지고, 화면 이동도 page_view로 기록된다.
-  await expect(page.getByTestId('inspector').locator('ol').last()).toContainText('대시보드 진입');
 });
 
 test('구별 리스크 화면이 전세가율·이상 거래 배지와 상세 신호를 보여준다', async ({ page }) => {
@@ -286,7 +289,7 @@ test('급매 레이더가 350세대 필터·세대수 토글·알림 규칙 미�
 });
 
 test('API 문서에서 OpenAPI 오퍼레이션과 스키마를 열람하고 Mock 응답을 실행한다', async ({ page }) => {
-  await navigateTo(page, /API 문서/);
+  await openOperatorRoute(page, 'api');
   await expect(page.getByRole('heading', { name: 'API 문서' })).toBeVisible();
   await expect(page.getByText('OpenAPI 1.2.0', { exact: false })).toBeVisible();
 
