@@ -168,7 +168,7 @@ export default function Overview({ navigate }: { navigate: (route: RouteKey) => 
             </DataNote>
           </Card>
 
-          <Card title="최근 갱신 현황" subtitle="가장 최근에 반영된 두 구간">
+          <Card title="최근 갱신 현황" subtitle="최근 반영 이력">
             <ul className="divide-y divide-slate-100">
               {recentRuns.map((run) => (
                 <li key={run.runId} className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
@@ -207,7 +207,7 @@ export default function Overview({ navigate }: { navigate: (route: RouteKey) => 
         <Card title="지표를 읽는 법" subtitle="같은 기간·같은 면적 기준으로 비교합니다">
           <ol className="space-y-3">
             {[
-              ['중위 매매가', '그 달·그 지역 거래 금액의 가운데 값입니다. 평균 대신 중위값을 써서 혹은 거래 한 건이 시세를 끌고 가지 않습니다.'],
+              ['중위 매매가', '그 달·그 지역 거래 금액의 가운데 값입니다. 평균 대신 중위값을 쓰면 이상치인 거래 한 건이 시세를 끌고가지 않습니다.'],
               ['평당가', '거래금액을 전용면적(3.3058㎡ = 1평)으로 나눠 면적이 다른 단지를 같은 자로 비교합니다.'],
               ['전세가율', '매매 중위가 대비 전세 보증금 비중입니다. 높을수록 보증금 반환 위험이 커집니다.'],
             ].map(([title, description], index) => (
