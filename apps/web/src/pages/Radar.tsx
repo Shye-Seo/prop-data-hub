@@ -12,7 +12,16 @@ import {
   type AreaBandKey,
 } from '@prop/shared';
 import { Card, DataNote, EmptyState } from '../components/ui';
-import { formatArea, formatDate, formatKrwKorean, formatNumber, formatPct, formatPyeongPrice } from '../lib/format';
+import {
+  formatArea,
+  formatAreaWithPyeong,
+  formatDate,
+  formatKrwKorean,
+  formatNumber,
+  formatPct,
+  formatPyeong,
+  formatPyeongPrice,
+} from '../lib/format';
 import {
   DEFAULT_RADAR_UI_FILTER,
   RADAR_DISTRICTS,
@@ -316,7 +325,7 @@ export default function Radar() {
                       {selected.complexName} · {formatDate(selected.dealDate)} 계약
                     </p>
                     <p className="num mt-0.5 text-[11px] text-slate-600">
-                      {formatKrwKorean(selected.priceKrw)} · {formatArea(selected.areaM2)} · {selected.floor ?? '-'}층 · 평당가{' '}
+                      {formatKrwKorean(selected.priceKrw)} · {formatAreaWithPyeong(selected.areaM2)} · {selected.floor ?? '-'}층 · 평당가{' '}
                       {formatPyeongPrice(selected.pricePerPyeong)} · {selected.dealType}
                     </p>
                   </div>
@@ -364,7 +373,7 @@ export default function Radar() {
                   <tr className="table-head">
                     <th className="px-2 py-2">단지</th>
                     <th className="px-2 py-2">구·동</th>
-                    <th className="px-2 py-2 text-right">면적</th>
+                    <th className="px-2 py-2 text-right">면적(㎡·평)</th>
                     <th className="px-2 py-2">계약일</th>
                     <th className="px-2 py-2 text-right">거래가</th>
                     <th className="px-2 py-2 text-right">중위가 대비</th>
@@ -390,7 +399,10 @@ export default function Radar() {
                       <td className="px-2 py-2 text-xs text-slate-600">
                         {deal.sigungu} {deal.dong}
                       </td>
-                      <td className="num px-2 py-2 text-right text-xs text-slate-600">{formatArea(deal.areaM2)}</td>
+                      <td className="num px-2 py-2 text-right text-xs text-slate-600">
+                        {formatArea(deal.areaM2)}{' '}
+                        <span className="text-[10px] text-slate-400">({formatPyeong(deal.areaM2)})</span>
+                      </td>
                       <td className="num px-2 py-2 text-xs text-slate-500">{formatDate(deal.dealDate)}</td>
                       <td className="num px-2 py-2 text-right text-[13px] font-semibold text-ink-800">
                         {formatKrwKorean(deal.priceKrw)}
@@ -561,7 +573,7 @@ export default function Radar() {
           />
         </div>
         <DataNote>
-          기준 시세는 같은 단지·같은 면적 구간(60·85·115㎡ 경계)의 최근 6개월 중위 매매가에서 해당 거래를 제외해 계산합니다.
+          기준 시세는 같은 단지·같은 면적 구간(60·85·115㎡ = 18·26·35평 경계)의 최근 6개월 중위 매매가에서 해당 거래를 제외해 계산합니다.
           표본이 3건 미만이면 그 매물은 목록에서 빠지고, 전세 표본이 없으면 갭 항목은 0점 처리됩니다. 감정평가가 아니라
           계약 전 확인 지표이므로 호가·수리 상태·층·향은 별도로 확인해야 합니다.
         </DataNote>

@@ -1,4 +1,4 @@
-import { median, shiftMonth } from './metrics';
+import { formatAreaM2AndPyeong, median, shiftMonth } from './metrics';
 import { areaBucket, jeonseRatioSeries } from './risk';
 import type {
   AlertChannel,
@@ -42,12 +42,15 @@ export function sigunguOf(lawdCd: string): string {
   return RADAR_SIGUNGU.find((row) => row.lawdCd === lawdCd)?.sigungu ?? lawdCd;
 }
 
-/** 전용면적 구간. 전세가율·비교 화면과 같은 경계(60·85·115㎡)를 쓴다. */
+/**
+ * 전용면적 구간. 전세가율·비교 화면과 같은 경계(60·85·115㎡ = 18·26·35평)를 쓴다.
+ * 필터 칩·알림 조건 문장에 그대로 나가므로 라벨에 평 환산을 함께 적는다.
+ */
 export const AREA_BAND_RANGES: Record<AreaBandKey, { min: number; max: number; label: string }> = {
-  under60: { min: 0, max: 60, label: '60㎡ 이하' },
-  '60to85': { min: 60, max: 85, label: '60~85㎡' },
-  '85to115': { min: 85, max: 115, label: '85~115㎡' },
-  over115: { min: 115, max: Number.POSITIVE_INFINITY, label: '115㎡ 초과' },
+  under60: { min: 0, max: 60, label: '60㎡ (18평) 이하' },
+  '60to85': { min: 60, max: 85, label: '60~85㎡ (18~26평)' },
+  '85to115': { min: 85, max: 115, label: '85~115㎡ (26~35평)' },
+  over115: { min: 115, max: Number.POSITIVE_INFINITY, label: '115㎡ (35평) 초과' },
 };
 
 export function areaBandOf(areaM2: number): AreaBandKey {
@@ -584,7 +587,7 @@ export function matchAlertRule(deals: RadarDeal[], rule: AlertRule): RadarDeal[]
 
 function dealLine(deal: RadarDeal): string {
   const discount = `${deal.discountPct.toFixed(1)}%`;
-  return `${deal.complexName}(${deal.dong}) ${Math.round(deal.areaM2)}㎡ ${Math.round(deal.priceKrw / 10000).toLocaleString('ko-KR')}만원 · ${discount}`;
+  return `${deal.complexName}(${deal.dong}) ${formatAreaM2AndPyeong(deal.areaM2)} ${Math.round(deal.priceKrw / 10000).toLocaleString('ko-KR')}만원 · ${discount}`;
 }
 
 export interface AlertPreviewOptions {

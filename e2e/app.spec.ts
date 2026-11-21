@@ -67,7 +67,7 @@ test('실거래 탐색에서 단지·면적 필터와 CSV 저장이 동작한다
   await expect(page.getByRole('heading', { name: '실거래 탐색' })).toBeVisible();
 
   await page.getByLabel('단지 선택').selectOption({ label: '문현베스티움' });
-  await page.getByRole('button', { name: '60~85㎡' }).click();
+  await page.getByRole('button', { name: /60~85㎡/ }).click();
   await expect.poll(async () => page.locator('[data-testid="transaction-table"] tbody tr').count()).toBeGreaterThan(0);
 
   const rows = page.locator('[data-testid="transaction-table"] tbody tr');
@@ -75,6 +75,8 @@ test('실거래 탐색에서 단지·면적 필터와 CSV 저장이 동작한다
   for (let index = 0; index < Math.min(count, 5); index += 1) {
     await expect(rows.nth(index)).toContainText('문현베스티움');
   }
+  // 전용면적은 ㎡와 평을 함께 보여준다(84.98㎡ (25.7평)).
+  await expect(rows.first()).toContainText(/㎡ \(\d+(\.\d+)?평\)/);
 
   await waitForEvent(page, 'region_filter_change', (event) => event.props.complexId === 'MOLIT-26290-001');
 
@@ -225,6 +227,7 @@ test('구별 리스크 화면이 전세가율·이상 거래 배지와 상세 �
   await expect(page.getByRole('heading', { name: '구별 리스크' })).toBeVisible();
   await expect(page.getByText('중위 전세가율', { exact: true })).toBeVisible();
   await expect(page.getByText('고위험 단지', { exact: true })).toBeVisible();
+  await expect(page.getByText('대표 전용면적(84㎡·25평) 구간 기준', { exact: false })).toBeVisible();
 
   for (const label of ['구별 중위 평당가', '구별 중위 전세가율', '구별 12개월 거래량']) {
     const chart = page.locator(`svg[aria-label*="${label}"]`);
@@ -258,6 +261,8 @@ test('급매 레이더가 350세대 필터·세대수 토글·알림 규칙 미�
   await expect.poll(async () => rows.count()).toBeGreaterThan(0);
   const largeOnly = await rows.count();
   await expect(rows.first()).toContainText('세대');
+  // 레이더 표도 전용면적 옆에 평 환산을 붙인다.
+  await expect(rows.first()).toContainText(/㎡ \(\d+(\.\d+)?평\)/);
 
   // 세대수 토글을 끄면 350세대 미만 단지의 급매까지 늘어난다.
   await page.getByTestId('radar-large-only').uncheck();

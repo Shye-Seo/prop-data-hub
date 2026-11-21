@@ -339,7 +339,9 @@ describe('맞춤 알림 규칙', () => {
 
   it('규칙을 정규화하고 조건 문장을 만든다', () => {
     expect(rule.lawdCds).toEqual(['26230', '26290']);
-    expect(describeAlertRule(rule)).toBe('부산진구·남구 · 350세대 이상 · 60~85㎡ · 중위가 대비 -8% 이하 · 점수 40점 이상');
+    expect(describeAlertRule(rule)).toBe(
+      '부산진구·남구 · 350세대 이상 · 60~85㎡ (18~26평) · 중위가 대비 -8% 이하 · 점수 40점 이상',
+    );
   });
 
   it('알림 미리보기는 매칭 건수·카카오 본문·웹훅 payload를 함께 만든다', () => {

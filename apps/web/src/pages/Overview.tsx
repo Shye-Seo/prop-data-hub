@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Card, Kpi, DataNote } from '../components/ui';
 import { BarChart, LineChart, Sparkline } from '../components/charts';
 import { DISTRICT_OPTIONS, MONTHS, REGION_OPTIONS, latestMacro, regionKpi, seriesForDong, seriesForLawdCd, dataset } from '../lib/dataset';
-import { formatKrwKorean, formatMonth, formatPct, formatPyeongPrice } from '../lib/format';
+import { formatAreaWithPyeong, formatKrwKorean, formatMonth, formatPct, formatPyeongPrice } from '../lib/format';
 import { tracker } from '../lib/tracker';
 import type { RouteKey } from '../lib/router';
 
@@ -93,8 +93,10 @@ export default function Overview({ navigate }: { navigate: (route: RouteKey) => 
           </button>
         ))}
         <span className="ml-auto text-[11px] text-slate-500">
-          표본 {dataset.transactions.filter((row) => !row.canceled).length.toLocaleString('ko-KR')}건 · 24개월
-          <button type="button" className="ml-2 font-semibold text-teal-700" onClick={() => navigate('risk')}>
+          표본 {dataset.transactions.filter((row) => !row.canceled).length.toLocaleString('ko-KR')}건 · 24개월 · 중위 전용면적{' '}
+          {formatAreaWithPyeong(kpi.medianAreaM2)}
+          <span className="mx-1.5 text-slate-300">|</span>
+          <button type="button" className="font-semibold text-teal-700" onClick={() => navigate('risk')}>
             구별 리스크 →
           </button>
           <button type="button" className="ml-2 font-semibold text-teal-700" onClick={() => navigate('radar')}>

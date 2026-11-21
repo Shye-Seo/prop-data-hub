@@ -11,7 +11,7 @@ import {
   overallSummary,
 } from '../lib/risk';
 import { dataset } from '../lib/dataset';
-import { formatDate, formatKrwKorean, formatNumber, formatPct, formatPyeongPrice } from '../lib/format';
+import { formatArea, formatDate, formatKrwKorean, formatNumber, formatPct, formatPyeong, formatPyeongPrice } from '../lib/format';
 import { tracker } from '../lib/tracker';
 
 const COLORS: Record<string, string> = {
@@ -43,6 +43,9 @@ export default function RegionRisk() {
   }, [lawdCd, sort]);
 
   const selected = selectedId ? RISK_BY_COMPLEX.get(selectedId) : undefined;
+  /** 갭은 단지 대표 전용면적으로 환산한 값이라, 라벨에도 그 단지의 면적을 그대로 보여준다. */
+  const selectedComplexArea =
+    (selectedId ? dataset.complexes.find((complex) => complex.complexId === selectedId)?.representativeAreaM2 : undefined) ?? 84;
   const selectedSeries = selected ? complexJeonseSeries(selected.complexId) : [];
   const selectedAnomalies = selected ? PRICE_ANOMALIES.filter((row) => row.complexId === selected.complexId) : [];
 
@@ -89,7 +92,9 @@ export default function RegionRisk() {
             {row.sigungu}
           </button>
         ))}
-        <span className="ml-auto text-[11px] text-slate-500">대표 면적(84㎡) 구간 기준 · 전월세 표본 {formatNumber(dataset.rentTransactions.length)}건</span>
+        <span className="ml-auto text-[11px] text-slate-500">
+          대표 전용면적(84㎡·25평) 구간 기준 · 전월세 표본 {formatNumber(dataset.rentTransactions.length)}건
+        </span>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -128,8 +133,8 @@ export default function RegionRisk() {
           formatAxis={(value) => `${Math.round(value)}%`}
         />
         <DataNote>
-          전세가율은 <span className="num">전세 보증금 평당가 ÷ 매매 평당가 × 100</span>으로 계산합니다. 같은 단지라도 59㎡와
-          84㎡는 평당가 수준이 달라, 같은 면적 구간(5㎡)에서 매칭한 값만 씁니다. 실서비스에서는{' '}
+          전세가율은 <span className="num">전세 보증금 평당가 ÷ 매매 평당가 × 100</span>으로 계산합니다. 같은 단지라도 59㎡(18평)와
+          84㎡(25평)는 평당가 수준이 달라, 같은 면적 구간(5㎡)에서 매칭한 값만 씁니다. 실서비스에서는{' '}
           <span className="num">v_jeonse_ratio_monthly</span> 뷰가 같은 정의로 계산합니다.
         </DataNote>
       </Card>
@@ -221,7 +226,12 @@ export default function RegionRisk() {
                   <dd className="num font-semibold text-slate-700">{formatKrwKorean(selected.jeonseMedianKrw)}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-400">갭(84㎡ 기준)</dt>
+                  <dt className="text-slate-400">
+                    갭
+                    <span className="block text-[10px] text-slate-400">
+                      {formatArea(selectedComplexArea)}·{formatPyeong(selectedComplexArea)} 기준
+                    </span>
+                  </dt>
                   <dd className="num font-semibold text-slate-700">{formatKrwKorean(selected.gapKrw)}</dd>
                 </div>
                 <div>

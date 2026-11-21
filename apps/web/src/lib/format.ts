@@ -1,10 +1,13 @@
 export {
+  formatAreaM2AndPyeong as formatAreaWithPyeong,
   formatKrwKorean,
   formatKrwWon,
   formatPct,
   formatPyeongPrice,
   formatPyeongPrice as formatPerPyeong,
 } from '@prop/shared';
+
+import { formatAreaM2, formatPyeongUnit } from '@prop/shared';
 
 export function formatMonth(month: string): string {
   const [year, monthText] = month.split('-');
@@ -24,12 +27,14 @@ export function formatNumber(value: number): string {
   return Math.round(value).toLocaleString('ko-KR');
 }
 
+/** 전용면적 ㎡만 표기. 평을 같이 보여야 하는 곳은 formatAreaWithPyeong을 쓴다. */
 export function formatArea(areaM2: number): string {
-  return `${areaM2.toFixed(2)}㎡`;
+  return formatAreaM2(areaM2);
 }
 
+/** 전용면적의 평 환산(1평 = 3.305785㎡). */
 export function formatPyeong(areaM2: number): string {
-  return `${(areaM2 / 3.305785).toFixed(1)}평`;
+  return formatPyeongUnit(areaM2);
 }
 
 export function formatCompactKrw(amount: number): string {

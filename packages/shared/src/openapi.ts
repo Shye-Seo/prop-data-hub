@@ -617,7 +617,7 @@ export const openApiDocument = {
         type: 'object',
         properties: {
           rule: { $ref: '#/components/schemas/AlertRule' },
-          condition: { type: 'string', example: '부산진구·남구 · 350세대 이상 · 60~85㎡ · 중위가 대비 -8% 이하' },
+          condition: { type: 'string', example: '부산진구·남구 · 350세대 이상 · 60~85㎡ (18~26평) · 중위가 대비 -8% 이하' },
           matchedCount: { type: 'integer' },
           sample: { type: 'array', items: { $ref: '#/components/schemas/RadarDeal' } },
           channels: { type: 'array', items: { type: 'string' } },

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { median } from '@prop/shared';
+import { median, m2ToPyeong } from '@prop/shared';
 import { Card, DataNote, EmptyState, Field, RiskBadge } from '../components/ui';
 import {
   AREA_BANDS,
@@ -10,7 +10,15 @@ import {
   type AreaBandKey,
 } from '../lib/dataset';
 import { ANOMALY_BY_DEAL_HASH, RISK_BY_COMPLEX, readSavedComplexes, writeSavedComplexes } from '../lib/risk';
-import { formatArea, formatDate, formatKrwKorean, formatNumber, formatPyeong, formatPyeongPrice } from '../lib/format';
+import {
+  formatArea,
+  formatAreaWithPyeong,
+  formatDate,
+  formatKrwKorean,
+  formatNumber,
+  formatPyeong,
+  formatPyeongPrice,
+} from '../lib/format';
 import { tracker } from '../lib/tracker';
 
 const PAGE_SIZE = 30;
@@ -115,9 +123,19 @@ export default function Explore() {
   };
 
   const exportCsv = () => {
-    const header = ['계약일', '법정동', '단지명', '전용면적(㎡)', '층', '거래금액(원)', '평당가(원)', '거래유형'];
+    const header = ['계약일', '법정동', '단지명', '전용면적(㎡)', '전용면적(평)', '층', '거래금액(원)', '평당가(원)', '거래유형'];
     const lines = rows.slice(0, 500).map((row) =>
-      [row.dealDate, row.dong, row.aptName, row.areaM2, row.floor ?? '', row.priceKrw, row.pricePerPyeong, row.dealType].join(','),
+      [
+        row.dealDate,
+        row.dong,
+        row.aptName,
+        row.areaM2,
+        m2ToPyeong(row.areaM2).toFixed(1),
+        row.floor ?? '',
+        row.priceKrw,
+        row.pricePerPyeong,
+        row.dealType,
+      ].join(','),
     );
     const csv = `\uFEFF${[header.join(','), ...lines].join('\n')}`;
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -215,7 +233,7 @@ export default function Explore() {
         <SummaryTile label="조회 결과" value={`${formatNumber(summary.count)}건`} />
         <SummaryTile label="중위 거래금액" value={formatKrwKorean(summary.medianPrice)} />
         <SummaryTile label="중위 평당가" value={formatPyeongPrice(summary.medianPpp)} />
-        <SummaryTile label="중위 전용면적" value={`${summary.medianArea.toFixed(1)}㎡`} hint={formatPyeong(summary.medianArea)} />
+        <SummaryTile label="중위 전용면적" value={formatAreaWithPyeong(summary.medianArea)} />
       </div>
 
       <Card
@@ -235,7 +253,7 @@ export default function Explore() {
                   {selected.aptName} · {formatDate(selected.dealDate)} 계약
                 </p>
                 <p className="num mt-0.5 text-[11px] text-slate-600">
-                  {formatKrwKorean(selected.priceKrw)} · {formatArea(selected.areaM2)}㎡ · {selected.floor ?? '-'}층 · 평당가{' '}
+                  {formatKrwKorean(selected.priceKrw)} · {formatAreaWithPyeong(selected.areaM2)} · {selected.floor ?? '-'}층 · 평당가{' '}
                   {formatPyeongPrice(selected.pricePerPyeong)}
                 </p>
               </div>
@@ -273,7 +291,7 @@ export default function Explore() {
                     <th className="px-2 py-2">계약일</th>
                     <th className="px-2 py-2">단지</th>
                     <th className="px-2 py-2">법정동</th>
-                    <th className="px-2 py-2 text-right">전용면적</th>
+                    <th className="px-2 py-2 text-right">전용면적(㎡·평)</th>
                     <th className="px-2 py-2 text-right">층</th>
                     <th className="px-2 py-2 text-right">거래금액</th>
                     <th className="px-2 py-2 text-right">평당가</th>
@@ -298,8 +316,8 @@ export default function Explore() {
                       </td>
                       <td className="px-2 py-2 text-xs text-slate-600">{row.dong}</td>
                       <td className="num px-2 py-2 text-right text-xs text-slate-600">
-                        {formatArea(row.areaM2)}
-                        <span className="ml-1 text-[10px] text-slate-400">({formatPyeong(row.areaM2)})</span>
+                        {formatArea(row.areaM2)}{' '}
+                        <span className="text-[10px] text-slate-400">({formatPyeong(row.areaM2)})</span>
                       </td>
                       <td className="num px-2 py-2 text-right text-xs text-slate-600">{row.floor ?? '-'}</td>
                       <td className="num px-2 py-2 text-right text-[13px] font-semibold text-ink-800">{formatKrwKorean(row.priceKrw)}</td>

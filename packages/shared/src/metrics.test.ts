@@ -3,9 +3,12 @@ import {
   aggregateMonthly,
   calculateLoan,
   changeRatePct,
+  formatAreaM2,
+  formatAreaM2AndPyeong,
   formatKrwKorean,
   formatPct,
   formatPyeongPrice,
+  formatPyeongUnit,
   median,
   pricePerPyeongKrw,
   quantile,
@@ -20,6 +23,19 @@ describe('단위 환산·기초 통계', () => {
     expect(pricePerPyeongKrw(845_000_000, 84.98)).toBe(32_871_126);
     expect(pricePerPyeongKrw(0, 84.98)).toBe(0);
     expect(pricePerPyeongKrw(100, 0)).toBe(0);
+  });
+
+  it('전용면적을 ㎡와 평으로 함께 표기한다', () => {
+    // 1평 = 3.305785㎡. 화면·알림 문구가 같은 함수를 쓰므로 표기 규칙을 여기서 고정한다.
+    expect(formatAreaM2(84.98)).toBe('84.98㎡');
+    expect(formatPyeongUnit(84.98)).toBe('25.7평');
+    expect(formatAreaM2AndPyeong(84.98)).toBe('84.98㎡ (25.7평)');
+    // 정수로 떨어지면 뒤의 0을 지운다.
+    expect(formatAreaM2(85)).toBe('85㎡');
+    expect(formatAreaM2AndPyeong(85)).toBe('85㎡ (25.7평)');
+    expect(formatAreaM2AndPyeong(59.98)).toBe('59.98㎡ (18.1평)');
+    // 표본이 없어 값이 없으면 대시로 둔다(0㎡로 읽히지 않게).
+    expect(formatAreaM2AndPyeong(Number.NaN)).toBe('-');
   });
 
   it('중위값은 짝수 개에서 가운데 두 값의 평균을 반올림한다', () => {

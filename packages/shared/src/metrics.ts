@@ -5,6 +5,40 @@ export function m2ToPyeong(areaM2: number): number {
   return areaM2 / PYEONG_M2;
 }
 
+/**
+ * 자릿수를 고정하되 정수로 떨어지는 값은 뒤의 0을 지운다(85.00 → 85, 84.90 → 84.9).
+ * 화면·알림 문구가 같은 숫자 문자열을 쓰도록 공용으로 둔다.
+ */
+export function trimFixed(value: number, digits: number): string {
+  const text = value.toFixed(digits);
+  if (!text.includes('.')) return text;
+  return text.replace(/0+$/, '').replace(/\.$/, '');
+}
+
+/** 전용면적 ㎡ 표기. 84.98㎡, 59㎡처럼 뒤의 0은 지운다. */
+export function formatAreaM2(areaM2: number, digits = 2): string {
+  if (!Number.isFinite(areaM2)) return '-';
+  return `${trimFixed(areaM2, digits)}㎡`;
+}
+
+/** 전용면적 평 표기. 25.7평, 25평처럼 소수점 한 자리까지 쓴다. */
+export function formatPyeongUnit(areaM2: number, digits = 1): string {
+  if (!Number.isFinite(areaM2)) return '-';
+  return `${trimFixed(m2ToPyeong(areaM2), digits)}평`;
+}
+
+/**
+ * 전용면적을 ㎡와 평으로 함께 표기한다: '84.98㎡ (25.7평)'.
+ * 화면 표·상세·알림 문구가 모두 이 함수를 써서 단위와 소수점 정책을 한 곳에서 맞춘다.
+ */
+export function formatAreaM2AndPyeong(
+  areaM2: number,
+  options: { m2Digits?: number; pyeongDigits?: number } = {},
+): string {
+  if (!Number.isFinite(areaM2)) return '-';
+  return `${formatAreaM2(areaM2, options.m2Digits ?? 2)} (${formatPyeongUnit(areaM2, options.pyeongDigits ?? 1)})`;
+}
+
 export function pyeongToM2(pyeong: number): number {
   return pyeong * PYEONG_M2;
 }

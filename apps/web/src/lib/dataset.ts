@@ -33,10 +33,10 @@ export const REGION_OPTIONS = dataset.regions.map((region) => ({
 
 export const AREA_BANDS = [
   { key: 'all', label: '전체 면적', min: 0, max: Number.POSITIVE_INFINITY },
-  { key: 'under60', label: '60㎡ 이하', min: 0, max: 60 },
-  { key: '60to85', label: '60~85㎡', min: 60, max: 85 },
-  { key: '85to115', label: '85~115㎡', min: 85, max: 115 },
-  { key: 'over115', label: '115㎡ 초과', min: 115, max: Number.POSITIVE_INFINITY },
+  { key: 'under60', label: '60㎡ (18평) 이하', min: 0, max: 60 },
+  { key: '60to85', label: '60~85㎡ (18~26평)', min: 60, max: 85 },
+  { key: '85to115', label: '85~115㎡ (26~35평)', min: 85, max: 115 },
+  { key: 'over115', label: '115㎡ (35평) 초과', min: 115, max: Number.POSITIVE_INFINITY },
 ] as const;
 
 export type AreaBandKey = (typeof AREA_BANDS)[number]['key'];
@@ -87,6 +87,8 @@ export interface RegionKpi {
   transactionCount: number;
   medianPriceKrw: number;
   medianPricePerPyeong: number;
+  /** 표본 중위 전용면적(㎡). 개요 머리말에 평 환산과 함께 보여준다. */
+  medianAreaM2: number;
   yoyChangePct: number;
   latestMonth: string;
   latestMedianPriceKrw: number;
@@ -106,6 +108,7 @@ export function regionKpi(legalDongCode: string | null): RegionKpi {
     transactionCount: scoped.length,
     medianPriceKrw: median(scoped.map((row) => row.priceKrw)),
     medianPricePerPyeong: median(scoped.map((row) => row.pricePerPyeong)),
+    medianAreaM2: median(scoped.map((row) => row.areaM2)),
     yoyChangePct: changeRatePct(latest?.medianPriceKrw ?? 0, yearAgo?.medianPriceKrw ?? latest?.medianPriceKrw ?? 0),
     latestMonth: latest?.month ?? SAMPLE_END_MONTH,
     latestMedianPriceKrw: latest?.medianPriceKrw ?? 0,

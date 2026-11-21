@@ -3,7 +3,7 @@ import { Card, DataNote, RiskBadge } from '../components/ui';
 import { LineChart } from '../components/charts';
 import { ALL_COMPLEX_STATS, REGION_OPTIONS, complexStat, dataset } from '../lib/dataset';
 import { RISK_BY_COMPLEX, complexJeonseSeries } from '../lib/risk';
-import { formatKrwKorean, formatNumber, formatPct, formatPyeongPrice } from '../lib/format';
+import { formatAreaWithPyeong, formatKrwKorean, formatNumber, formatPct, formatPyeongPrice } from '../lib/format';
 import { tracker } from '../lib/tracker';
 
 const COLORS = ['#0f766e', '#1d4ed8', '#b45309'];
@@ -171,6 +171,7 @@ export default function Compare() {
                         return risk ? `${risk.score} (${risk.signals.length}개 신호)` : '-';
                       })}
                     />
+                    <Row label="대표 전용면적" values={stats.map((stat) => formatAreaWithPyeong(stat.complex.representativeAreaM2))} />
                     <Row label="세대수" values={stats.map((stat) => `${stat.complex.households.toLocaleString('ko-KR')}세대`)} />
                     <Row label="준공" values={stats.map((stat) => `${stat.complex.builtYear}년`)} />
                   </tbody>
