@@ -215,7 +215,7 @@ export default function Overview({ navigate }: { navigate: (route: RouteKey) => 
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+      <div className="grid items-start gap-4 lg:grid-cols-[1.2fr_1fr]">
         <Card title="월별 거래 표본" subtitle="최근 12개월 · 해제 거래 제외">
           <BarChart
             ariaLabel="월별 거래 표본 수 막대 그래프"
