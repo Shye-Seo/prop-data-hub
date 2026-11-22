@@ -32,12 +32,12 @@ const ZONE_OPTIONS: Array<{ key: PriorityZone; label: string }> = [
   { key: 'other', label: '그 밖의 지역' },
 ];
 
-const VERDICT_STYLE: Record<JeonseSafetyVerdict, { badge: string; panel: string; text: string }> = {
-  safe: { badge: 'border-emerald-300 bg-emerald-50 text-emerald-800', panel: 'border-emerald-200 bg-emerald-50/50', text: 'text-emerald-700' },
-  caution: { badge: 'border-amber-300 bg-amber-50 text-amber-800', panel: 'border-amber-200 bg-amber-50/50', text: 'text-amber-700' },
-  risk: { badge: 'border-orange-300 bg-orange-50 text-orange-800', panel: 'border-orange-200 bg-orange-50/50', text: 'text-orange-700' },
-  danger: { badge: 'border-rose-300 bg-rose-50 text-rose-700', panel: 'border-rose-200 bg-rose-50/50', text: 'text-rose-700' },
-  unknown: { badge: 'border-slate-300 bg-slate-50 text-slate-600', panel: 'border-slate-200 bg-slate-50', text: 'text-slate-600' },
+const VERDICT_STYLE: Record<JeonseSafetyVerdict, { badge: string; dot: string; text: string }> = {
+  safe: { badge: 'border-emerald-200 bg-emerald-50 text-emerald-800', dot: 'bg-emerald-500', text: 'text-emerald-800' },
+  caution: { badge: 'border-amber-200 bg-amber-50 text-amber-800', dot: 'bg-amber-500', text: 'text-amber-800' },
+  risk: { badge: 'border-orange-200 bg-orange-50 text-orange-800', dot: 'bg-orange-500', text: 'text-orange-800' },
+  danger: { badge: 'border-rose-200 bg-rose-50 text-rose-800', dot: 'bg-rose-500', text: 'text-rose-800' },
+  unknown: { badge: 'border-line bg-slate-50 text-ink-600', dot: 'bg-slate-400', text: 'text-ink-700' },
 };
 
 export default function JeonseSafety() {
@@ -116,11 +116,13 @@ export default function JeonseSafety() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-        <Card title="진단 조건" subtitle="단지·면적을 고르면 최근 6개월 중위 매매가를 시세 기준으로 씁니다.">
+      <div className="grid items-start gap-4 xl:grid-cols-[360px_1fr]">
+        <Card title="진단 조건" subtitle="최근 6개월 중위 매매가를 시세 기준으로 씁니다.">
           <div className="space-y-3.5">
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-slate-600">단지</span>
+            <div className="space-y-2.5 border-b border-line-soft pb-3.5">
+              <p className="label mb-0">대상 주택</p>
+              <label className="block">
+                <span className="mb-1.5 block text-[11.5px] font-medium text-ink-600">단지</span>
               <select
                 className="select"
                 value={complexId}
@@ -137,9 +139,9 @@ export default function JeonseSafety() {
             </label>
 
             <label className="block">
-              <span className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-600">
+              <span className="mb-1.5 flex items-center justify-between text-[11.5px] font-medium text-ink-600">
                 전용면적 구간
-                {area && <span className="num text-[11px] text-slate-400">{formatAreaWithPyeong(area.areaM2)}</span>}
+                {area && <span className="num text-[10.5px] font-normal text-ink-400">{formatAreaWithPyeong(area.areaM2)}</span>}
               </span>
               <select
                 className="select"
@@ -156,13 +158,15 @@ export default function JeonseSafety() {
               </select>
             </label>
 
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <div className="flex items-center justify-between">
+            </div>
+
+            <div className="rounded-md border border-line bg-canvas/60 px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
                 <p className="label">시세 기준(최근 6개월 중위)</p>
-                <label className="flex cursor-pointer items-center gap-1.5 text-[10px] text-slate-500">
+                <label className="flex cursor-pointer items-center gap-1.5 text-[10px] text-ink-400">
                   <input
                     type="checkbox"
-                    className="h-3.5 w-3.5 accent-teal-600"
+                    className="h-3.5 w-3.5 accent-accent"
                     checked={customPrice}
                     onChange={(event) => {
                       setCustomPrice(event.target.checked);
@@ -186,13 +190,13 @@ export default function JeonseSafety() {
                     onChange={(event) => setCustomPriceManwon(event.target.value)}
                     aria-label="시세 직접 입력(만원)"
                   />
-                  <p className="num mt-1 text-[11px] text-slate-500">{formatKrwKorean(marketPriceKrw)}</p>
+                  <p className="num mt-1 text-[11px] text-ink-400">{formatKrwKorean(marketPriceKrw)}</p>
                 </div>
               ) : (
-                <p className="num mt-1 text-[13px] font-semibold text-ink-800">
+                <p className="num mt-1 text-[13px] font-semibold text-ink-900">
                   {reference ? formatKrwKorean(reference.medianPriceKrw) : '표본 없음'}
                   {reference && (
-                    <span className="ml-1 text-[10px] font-normal text-slate-400">
+                    <span className="ml-1 text-[10px] font-normal text-ink-400">
                       {reference.sampleCount}건 · {formatMonth(reference.latestMonth)}
                     </span>
                   )}
@@ -200,7 +204,9 @@ export default function JeonseSafety() {
               )}
             </div>
 
-            <Field label="희망 전세 보증금" hint={formatKrwKorean(depositKrw)}>
+            <div className="space-y-2.5 border-t border-line-soft pt-3.5">
+              <p className="label mb-0">보증금</p>
+              <Field label="희망 전세 보증금" hint={formatKrwKorean(depositKrw)}>
               <input
                 type="number"
                 className="select num"
@@ -212,15 +218,18 @@ export default function JeonseSafety() {
                 data-testid="jeonse-deposit"
               />
             </Field>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1">
               {[60, 70, 80].map((ratio) => (
                 <button key={ratio} type="button" className="chip" onClick={() => applyRatio(ratio)}>
                   시세의 {ratio}%
                 </button>
               ))}
             </div>
+            </div>
 
-            <Field label="선순위 근저당 채권최고액" hint={formatKrwKorean(seniorKrw)}>
+            <div className="space-y-2.5 border-t border-line-soft pt-3.5">
+              <p className="label mb-0">선순위·지역</p>
+              <Field label="선순위 근저당 채권최고액" hint={formatKrwKorean(seniorKrw)}>
               <input
                 type="number"
                 className="select num"
@@ -232,12 +241,12 @@ export default function JeonseSafety() {
                 data-testid="jeonse-senior"
               />
             </Field>
-            <p className="-mt-2 text-[10px] leading-relaxed text-slate-400">
+            <p className="-mt-1 text-[10px] leading-relaxed text-ink-300">
               등기부등본 을구의 근저당권 채권최고액을 넣습니다. 없으면 0.
             </p>
 
             <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-slate-600">최우선변제 권역</span>
+              <span className="mb-1.5 block text-[11.5px] font-medium text-ink-600">최우선변제 권역</span>
               <select
                 className="select"
                 value={zone}
@@ -251,24 +260,28 @@ export default function JeonseSafety() {
                 ))}
               </select>
             </label>
+            </div>
           </div>
         </Card>
 
         <div className="space-y-4">
-          <section className={`card border ${style.panel}`} data-testid="jeonse-verdict">
+          <section className="card" data-testid="jeonse-verdict">
             <div className="card-pad">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="label">진단 결과</p>
-                  <p className={`mt-1 text-2xl font-semibold ${style.text}`}>{jeonseSafetyVerdictLabel(result.verdict)}</p>
-                  <p className="mt-1 max-w-2xl text-[12px] leading-relaxed text-slate-600">{result.headline}</p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <p className={`text-[24px] font-semibold leading-none tracking-[-0.03em] ${style.text}`}>{jeonseSafetyVerdictLabel(result.verdict)}</p>
+                    <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10.5px] font-medium ${style.badge}`}>
+                      <span className={`dot ${style.dot}`} aria-hidden="true" />
+                      전세가율 {result.jeonseRatioPct.toFixed(1)}% · {riskLevelLabel(result.ratioLevel)}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 max-w-2xl text-[11.5px] leading-relaxed text-ink-500">{result.headline}</p>
                 </div>
-                <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${style.badge}`}>
-                  전세가율 {result.jeonseRatioPct.toFixed(1)}% · {riskLevelLabel(result.ratioLevel)}
-                </span>
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-4 lg:grid-cols-4">
                 <Tile label="전세가율" value={`${result.jeonseRatioPct.toFixed(1)}%`} hint="(보증금 + 선순위) ÷ 시세" />
                 <Tile label="보증금 + 선순위" value={formatKrwKorean(result.totalClaimKrw)} hint={`시세 ${formatKrwKorean(marketPriceKrw)}`} />
                 <Tile
@@ -285,7 +298,7 @@ export default function JeonseSafety() {
             </div>
           </section>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid items-start gap-4 lg:grid-cols-2">
             <Card title="최우선변제금" subtitle="경매 시 다른 담보권보다 먼저 돌려받는 금액">
               <dl className="space-y-2 text-[12px]">
                 <Row label="권역" value={PRIORITY_ZONE_LABEL[result.priority.zone]} />
@@ -301,7 +314,7 @@ export default function JeonseSafety() {
                 />
                 <Row label="최우선변제 대상이 아닌 보증금" value={formatKrwKorean(result.priority.uncoveredDepositKrw)} />
               </dl>
-              <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-[10px] leading-relaxed text-slate-500">
+              <p className="mt-2 border-t border-line-soft pt-2 text-[10px] leading-relaxed text-ink-400">
                 {result.priority.eligible
                   ? `법정 한도 ${formatKrwKorean(result.priority.statutoryAmountKrw)}에서 시세의 1/2 한도를 적용했습니다. 전입신고·확정일자와 대항요건을 갖춰야 효력이 있습니다.`
                   : `보증금이 ${PRIORITY_ZONE_LABEL[result.priority.zone]} 소액임차인 기준을 넘어 최우선변제 대상이 아닙니다.`}
@@ -348,19 +361,19 @@ export default function JeonseSafety() {
               <table className="w-full min-w-[560px] border-collapse text-sm">
                 <thead>
                   <tr className="table-head">
-                    <th className="px-2 py-2 text-left">시세 하락</th>
-                    <th className="px-2 py-2 text-right">가정 시세</th>
-                    <th className="px-2 py-2 text-right">회수 가능 보증금</th>
-                    <th className="px-2 py-2 text-right">손실</th>
+                    <th className="px-2 py-[7px] text-left">시세 하락</th>
+                    <th className="px-2 py-[7px] text-right">가정 시세</th>
+                    <th className="px-2 py-[7px] text-right">회수 가능 보증금</th>
+                    <th className="px-2 py-[7px] text-right">손실</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-line-soft">
                   {result.stress.map((row) => (
                     <tr key={row.dropPct}>
-                      <td className="num px-2 py-2 font-semibold text-slate-700">{row.dropPct}%</td>
-                      <td className="num px-2 py-2 text-right text-xs text-slate-600">{formatKrwKorean(row.assumedPriceKrw)}</td>
-                      <td className="num px-2 py-2 text-right text-xs text-slate-700">{formatKrwKorean(row.recoverableKrw)}</td>
-                      <td className={`num px-2 py-2 text-right text-xs font-semibold ${row.lossKrw > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                      <td className="num px-2 py-[7px] text-[11.5px] font-semibold text-ink-700">{row.dropPct}%</td>
+                      <td className="num px-2 py-[7px] text-right text-[11.5px] text-ink-500">{formatKrwKorean(row.assumedPriceKrw)}</td>
+                      <td className="num px-2 py-[7px] text-right text-[11.5px] text-ink-700">{formatKrwKorean(row.recoverableKrw)}</td>
+                      <td className={`num px-2 py-2 text-right text-xs font-semibold ${row.lossKrw > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
                         {row.lossKrw > 0 ? formatKrwKorean(row.lossKrw) : '없음'}
                       </td>
                     </tr>
@@ -397,10 +410,10 @@ export default function JeonseSafety() {
 
 function Tile({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="rounded-lg border border-white/60 bg-white/80 px-3 py-2">
+    <div>
       <p className="label">{label}</p>
-      <p className="num mt-0.5 text-base font-semibold text-ink-800">{value}</p>
-      <p className="mt-0.5 line-clamp-2 text-[10px] leading-relaxed text-slate-400">{hint}</p>
+      <p className="num mt-1 text-[18px] font-semibold leading-none tracking-[-0.02em] text-ink-900">{value}</p>
+      <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-ink-400">{hint}</p>
     </div>
   );
 }
@@ -408,8 +421,8 @@ function Tile({ label, value, hint }: { label: string; value: string; hint: stri
 function Row({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'good' | 'muted' }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className={`num font-semibold ${tone === 'good' ? 'text-emerald-600' : tone === 'muted' ? 'text-slate-400' : 'text-slate-700'}`}>
+      <dt className="text-ink-400">{label}</dt>
+      <dd className={`num max-w-[62%] text-right text-[12px] font-semibold leading-snug ${tone === 'good' ? 'text-emerald-700' : tone === 'muted' ? 'text-ink-300' : 'text-ink-800'}`}>
         {value}
       </dd>
     </div>
@@ -418,14 +431,14 @@ function Row({ label, value, tone = 'default' }: { label: string; value: string;
 
 function CheckRow({ label, pass, detail }: { label: string; pass: boolean; detail: string }) {
   return (
-    <li className="flex items-start justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2">
-      <span className="text-slate-600">
-        <span className={`mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${pass ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+    <li className="flex items-start justify-between gap-2 border-b border-line-soft pb-1.5 last:border-0">
+      <span className="text-[11.5px] text-ink-600">
+        <span className={`mr-1.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] font-bold ${pass ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
           {pass ? '✓' : '✕'}
         </span>
         {label}
       </span>
-      <span className="num shrink-0 text-right text-[10px] text-slate-400">{detail}</span>
+      <span className="num shrink-0 text-right text-[10px] text-ink-400">{detail}</span>
     </li>
   );
 }

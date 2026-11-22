@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { median, m2ToPyeong } from '@prop/shared';
-import { Card, DataNote, EmptyState, Field, RiskBadge } from '../components/ui';
+import { Card, DataNote, EmptyState, Field, FilterLabel, RiskBadge, Stat, StatGrid } from '../components/ui';
 import {
   AREA_BANDS,
   COMPLEX_BY_ID,
@@ -150,14 +150,14 @@ export default function Explore() {
       route: '/explore',
       detail: { rows: Math.min(rows.length, 500), format: 'csv' },
     });
-    setToast(`${Math.min(rows.length, 500)}건을 CSV로 저장했습니다. (이벤트: report_export)`);
+    setToast(`${Math.min(rows.length, 500)}건을 CSV로 저장했습니다.`);
     window.setTimeout(() => setToast(null), 4000);
   };
 
   return (
     <div className="space-y-4">
-      <Card title="조회 조건" subtitle="조건을 바꾸면 800ms 뒤 region_filter_change 이벤트가 1건 기록됩니다.">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="filter-bar space-y-2.5">
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
           <Field label="지역">
             <select
               className="select"
@@ -214,7 +214,8 @@ export default function Explore() {
           </Field>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label="면적 구간">
+        <div className="flex flex-wrap items-center gap-1" role="group" aria-label="면적 구간">
+          <FilterLabel>면적</FilterLabel>
           {AREA_BANDS.map((band) => (
             <button
               key={band.key}
@@ -226,19 +227,20 @@ export default function Explore() {
               {band.label}
             </button>
           ))}
+          <span className="ml-auto num text-[10.5px] text-ink-300">관심 단지 {saved.length}곳</span>
         </div>
-      </Card>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryTile label="조회 결과" value={`${formatNumber(summary.count)}건`} />
-        <SummaryTile label="중위 거래금액" value={formatKrwKorean(summary.medianPrice)} />
-        <SummaryTile label="중위 평당가" value={formatPyeongPrice(summary.medianPpp)} />
-        <SummaryTile label="중위 전용면적" value={formatAreaWithPyeong(summary.medianArea)} />
       </div>
+
+      <StatGrid>
+        <Stat label="조회 결과" value={`${formatNumber(summary.count)}건`} hint={`${months}개월 · 해제 제외`} />
+        <Stat label="중위 거래금액" value={formatKrwKorean(summary.medianPrice)} hint="조회 결과의 가운데 값" />
+        <Stat label="중위 평당가" value={formatPyeongPrice(summary.medianPpp)} hint="전용면적 환산" />
+        <Stat label="중위 전용면적" value={formatAreaWithPyeong(summary.medianArea)} hint="㎡ (평) 병기" />
+      </StatGrid>
 
       <Card
         title="실거래 목록"
-        subtitle={`전체 ${formatNumber(summary.count)}건 중 ${Math.min(visible, summary.count)}건 표시 · 관심 ${saved.length}곳`}
+        subtitle={`전체 ${formatNumber(summary.count)}건 중 ${Math.min(visible, summary.count)}건 표시`}
         action={
           <button type="button" className="btn" onClick={exportCsv} data-testid="export-csv" disabled={rows.length === 0}>
             CSV 저장
@@ -246,22 +248,22 @@ export default function Explore() {
         }
       >
         {selected && (
-          <div className="mb-3 rounded-lg border border-teal-200 bg-teal-50/60 px-3 py-2.5" data-testid="deal-detail">
+          <div className="mb-3 rounded-md border border-line bg-canvas/70 px-3 py-2.5" data-testid="deal-detail">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
-                <p className="text-[13px] font-semibold text-ink-900">
+                <p className="text-[12.5px] font-semibold text-ink-900">
                   {selected.aptName} · {formatDate(selected.dealDate)} 계약
                 </p>
-                <p className="num mt-0.5 text-[11px] text-slate-600">
+                <p className="num mt-0.5 text-[11px] text-ink-500">
                   {formatKrwKorean(selected.priceKrw)} · {formatAreaWithPyeong(selected.areaM2)} · {selected.floor ?? '-'}층 · 평당가{' '}
                   {formatPyeongPrice(selected.pricePerPyeong)}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 {selectedRisk && <RiskBadge level={selectedRisk.level}>{`전세가율 ${selectedRisk.jeonseRatioPct.toFixed(1)}%`}</RiskBadge>}
                 <button
                   type="button"
-                  className="btn-ghost text-xs"
+                  className="btn-ghost"
                   onClick={() => toggleSaved(selected.complexId ?? selected.aptName, selected.aptName, selected.priceKrw)}
                   data-testid="save-listing"
                 >
@@ -270,10 +272,10 @@ export default function Explore() {
               </div>
             </div>
             {selectedRisk && selectedRisk.signals.length > 0 && (
-              <ul className="mt-2 flex flex-wrap gap-1.5">
+              <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
                 {selectedRisk.signals.map((signal) => (
-                  <li key={signal.code} className="rounded bg-white px-2 py-1 text-[10px] text-slate-600 ring-1 ring-slate-200">
-                    <span className="font-semibold text-slate-700">{signal.label}</span> · {signal.detail}
+                  <li key={signal.code} className="text-[10.5px] text-ink-500">
+                    <span className="font-medium text-ink-700">{signal.label}</span> · {signal.detail}
                   </li>
                 ))}
               </ul>
@@ -288,14 +290,14 @@ export default function Explore() {
               <table className="w-full min-w-[720px] border-collapse text-sm" data-testid="transaction-table">
                 <thead>
                   <tr className="table-head">
-                    <th className="px-2 py-2">계약일</th>
-                    <th className="px-2 py-2">단지</th>
-                    <th className="px-2 py-2">법정동</th>
-                    <th className="px-2 py-2 text-right">전용면적(㎡·평)</th>
-                    <th className="px-2 py-2 text-right">층</th>
-                    <th className="px-2 py-2 text-right">거래금액</th>
-                    <th className="px-2 py-2 text-right">평당가</th>
-                    <th className="px-2 py-2">리스크</th>
+                    <th className="px-2 py-[7px]">계약일</th>
+                    <th className="px-2 py-[7px]">단지</th>
+                    <th className="px-2 py-[7px]">법정동</th>
+                    <th className="px-2 py-[7px] text-right">전용면적(㎡·평)</th>
+                    <th className="px-2 py-[7px] text-right">층</th>
+                    <th className="px-2 py-[7px] text-right">거래금액</th>
+                    <th className="px-2 py-[7px] text-right">평당가</th>
+                    <th className="px-2 py-[7px]">리스크</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -303,41 +305,40 @@ export default function Explore() {
                     const anomaly = ANOMALY_BY_DEAL_HASH.get(row.dealHash);
                     const risk = row.complexId ? RISK_BY_COMPLEX.get(row.complexId) : undefined;
                     return (
-                    <tr
-                      key={row.dealHash}
-                      className={`cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50/70 ${selectedHash === row.dealHash ? 'bg-teal-50/50' : ''}`}
-                      onClick={() => openDeal(row)}
-                      data-testid={`deal-row-${row.dealHash.slice(0, 6)}`}
-                    >
-                      <td className="num px-2 py-2 text-xs text-slate-500">{formatDate(row.dealDate)}</td>
-                      <td className="px-2 py-2">
-                        <span className="text-[13px] font-medium text-slate-800">{row.aptName}</span>
-                        <span className="ml-1 text-[10px] text-slate-400">{row.dealType}</span>
-                      </td>
-                      <td className="px-2 py-2 text-xs text-slate-600">{row.dong}</td>
-                      <td className="num px-2 py-2 text-right text-xs text-slate-600">
-                        {formatArea(row.areaM2)}{' '}
-                        <span className="text-[10px] text-slate-400">({formatPyeong(row.areaM2)})</span>
-                      </td>
-                      <td className="num px-2 py-2 text-right text-xs text-slate-600">{row.floor ?? '-'}</td>
-                      <td className="num px-2 py-2 text-right text-[13px] font-semibold text-ink-800">{formatKrwKorean(row.priceKrw)}</td>
-                      <td className="num px-2 py-2 text-right text-xs text-slate-600">{formatPyeongPrice(row.pricePerPyeong)}</td>
-                      <td className="px-2 py-2">
-                        <div className="flex flex-wrap gap-1">
-                          {anomaly && (
-                            <span
-                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                                anomaly.kind === 'sharp_drop' ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200' : 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
-                              }`}
-                              title={`단지 중위 평당가 대비 ${anomaly.deviationPct}%`}
-                            >
-                              {anomaly.kind === 'sharp_drop' ? '급락' : anomaly.kind === 'outlier_high' ? '고가 이상' : '저가 이상'}
-                            </span>
-                          )}
-                          {risk && risk.level !== 'low' && <RiskBadge level={risk.level} />}
-                        </div>
-                      </td>
-                    </tr>
+                      <tr
+                        key={row.dealHash}
+                        className={`cursor-pointer border-b border-line-soft transition-colors last:border-0 hover:bg-canvas ${
+                          selectedHash === row.dealHash ? 'bg-canvas' : ''
+                        }`}
+                        onClick={() => openDeal(row)}
+                        data-testid={`deal-row-${row.dealHash.slice(0, 6)}`}
+                      >
+                        <td className="num px-2 py-[7px] text-[11.5px] text-ink-400">{formatDate(row.dealDate)}</td>
+                        <td className="px-2 py-[7px]">
+                          <span className="text-[12.5px] font-medium text-ink-800">{row.aptName}</span>
+                          <span className="ml-1.5 text-[10px] text-ink-300">{row.dealType}</span>
+                        </td>
+                        <td className="px-2 py-[7px] text-[11.5px] text-ink-500">{row.dong}</td>
+                        <td className="num px-2 py-[7px] text-right text-[11.5px] text-ink-500">
+                          {formatArea(row.areaM2)} <span className="text-[10px] text-ink-300">({formatPyeong(row.areaM2)})</span>
+                        </td>
+                        <td className="num px-2 py-[7px] text-right text-[11.5px] text-ink-500">{row.floor ?? '-'}</td>
+                        <td className="num px-2 py-[7px] text-right text-[12.5px] font-semibold text-ink-900">{formatKrwKorean(row.priceKrw)}</td>
+                        <td className="num px-2 py-[7px] text-right text-[11.5px] text-ink-500">{formatPyeongPrice(row.pricePerPyeong)}</td>
+                        <td className="px-2 py-[7px]">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {anomaly && (
+                              <span
+                                className={`text-[10px] font-medium ${anomaly.kind === 'sharp_drop' ? 'text-rose-700' : 'text-amber-700'}`}
+                                title={`단지 중위 평당가 대비 ${anomaly.deviationPct}%`}
+                              >
+                                {anomaly.kind === 'sharp_drop' ? '급락' : anomaly.kind === 'outlier_high' ? '고가 이상' : '저가 이상'}
+                              </span>
+                            )}
+                            {risk && risk.level !== 'low' && <RiskBadge level={risk.level} />}
+                          </div>
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
@@ -345,7 +346,7 @@ export default function Explore() {
             </div>
 
             <div className="mt-3 flex items-center justify-between gap-3">
-              <p className="text-[11px] text-slate-400">금액은 원, 평당가는 전용면적 기준입니다. 해제 거래는 목록에서 제외했습니다.</p>
+              <p className="text-[10.5px] text-ink-300">금액은 원, 평당가는 전용면적 기준입니다. 해제 거래는 목록에서 제외했습니다.</p>
               {visible < rows.length && (
                 <button type="button" className="btn-ghost" onClick={() => setVisible((value) => value + PAGE_SIZE)}>
                   {Math.min(PAGE_SIZE, rows.length - visible)}건 더 보기
@@ -357,27 +358,15 @@ export default function Explore() {
       </Card>
 
       <DataNote>
-        목록은 계약일·단지·면적·층·금액 조건으로 정렬됩니다. 실서비스에서는 이 조회가 PostgreSQL의
-        (지역, 월, 금액) 복합 인덱스와 BRIN 기간 스캔을 타도록 설계했습니다. 행을 누르면 상세가 열리고
-        listing_click, 관심 등록은 listing_save 이벤트로 남습니다. 리스크 배지는 단지의 전세가율·급락·이상 거래를 합산한
-        점수입니다.
+        행을 누르면 계약 조건 상세가 열리고 관심 등록으로 단지를 저장할 수 있습니다. 리스크 표시는 단지의 전세가율·급락·이상
+        거래를 합산한 단계입니다. 표본이 적은 단지는 중위값이 흔들릴 수 있으니 계약 전 호가와 수리 상태를 함께 확인하세요.
       </DataNote>
 
       {toast && (
-        <div role="status" className="fixed bottom-5 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-ink-900 px-4 py-2.5 text-xs font-medium text-white shadow-lg">
+        <div role="status" className="fixed bottom-5 left-1/2 z-30 -translate-x-1/2 rounded-md bg-ink-900 px-3.5 py-2 text-[11.5px] font-medium text-white shadow-pop">
           {toast}
         </div>
       )}
-    </div>
-  );
-}
-
-function SummaryTile({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="card card-pad">
-      <p className="label">{label}</p>
-      <p className="num mt-1 text-lg font-semibold text-ink-800">{value}</p>
-      {hint && <p className="mt-0.5 text-[11px] text-slate-400">{hint}</p>}
     </div>
   );
 }

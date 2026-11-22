@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { calculateLoan, rateSensitivity, type RepaymentType } from '@prop/shared';
-import { Card, DataNote, Field } from '../components/ui';
+import { Card, DataNote, Field, Stat, StatGrid } from '../components/ui';
 import { LineChart } from '../components/charts';
 import { latestMacro } from '../lib/dataset';
 import { formatKrwKorean, formatNumber } from '../lib/format';
@@ -70,13 +70,13 @@ export default function RateLab() {
   }, [priceEok, equityEok, rate, termYears, repayment, result.loanKrw, result.monthlyPaymentKrw]);
 
   const interestShare = result.totalPaymentKrw === 0 ? 0 : (result.totalInterestKrw / result.totalPaymentKrw) * 100;
-  const current = sensitivity.find((row) => Math.abs(row.annualRatePct - rate) < 0.26);
 
   return (
     <div className="space-y-4">
       <div className="grid gap-4 xl:grid-cols-[340px_1fr]">
-        <Card title="대출 조건" subtitle="값을 바꾸면 400ms 뒤 rate_scenario_adjust 이벤트가 기록됩니다.">
+        <Card title="대출 조건" subtitle="값을 바꾸면 상환액과 표가 바로 다시 계산됩니다.">
           <div className="space-y-4">
+            <div className="space-y-4 border-b border-line-soft pb-3.5">
             <Field label="매매가" hint={`${priceEok.toFixed(2)}억원`}>
               <input
                 type="range"
@@ -113,6 +113,8 @@ export default function RateLab() {
                 aria-label="대출 금리"
               />
             </Field>
+            </div>
+            <div className="space-y-4">
             <Field label="상환 기간" hint={`${termYears}년`}>
               <select
                 className="select"
@@ -128,7 +130,7 @@ export default function RateLab() {
               </select>
             </Field>
             <div>
-              <span className="mb-1.5 block text-xs font-medium text-slate-600">상환 방식</span>
+              <span className="mb-1.5 block text-[11.5px] font-medium text-ink-600">상환 방식</span>
               <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="상환 방식">
                 {REPAYMENTS.map((option) => (
                   <button
@@ -136,31 +138,32 @@ export default function RateLab() {
                     type="button"
                     onClick={() => setRepayment(option.key)}
                     aria-pressed={repayment === option.key}
-                    className={`rounded-lg border px-2 py-2 text-center text-[11px] leading-tight transition ${
+                    className={`rounded-md border px-2 py-2 text-center text-[11px] leading-tight transition-colors ${
                       repayment === option.key
-                        ? 'border-teal-600 bg-teal-50 font-semibold text-teal-800'
-                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                        ? 'border-ink-900 bg-ink-900 font-medium text-white'
+                        : 'border-line text-ink-600 hover:border-slate-300'
                     }`}
                   >
                     {option.label}
-                    <span className="mt-0.5 block text-[10px] font-normal text-slate-400">{option.hint}</span>
+                    <span className={`mt-0.5 block text-[10px] font-normal ${repayment === option.key ? 'text-white/60' : 'text-ink-300'}`}>{option.hint}</span>
                   </button>
                 ))}
               </div>
             </div>
-            <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+            <p className="border-t border-line-soft pt-3 text-[10.5px] leading-relaxed text-ink-400">
               기준금리 {baseRate.toFixed(2)}% · 주담대 {mortgageRate.toFixed(2)}% (월간 지표, 말일 기준)
+            </p>
             </div>
           </div>
         </Card>
 
         <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <ResultTile label="대출액" value={formatKrwKorean(result.loanKrw)} hint={`LTV ${result.ltvPct.toFixed(1)}%`} />
-            <ResultTile label="월 상환액" value={formatKrwKorean(result.monthlyPaymentKrw)} hint={`${termYears}년 ${REPAYMENTS.find((row) => row.key === repayment)?.label}`} highlight />
-            <ResultTile label="총 이자" value={formatKrwKorean(result.totalInterestKrw)} hint={`총 상환의 ${interestShare.toFixed(1)}%`} />
-            <ResultTile label="필요 연소득" value={formatKrwKorean(result.requiredAnnualIncomeKrw)} hint="DSR 40% 기준" />
-          </div>
+          <StatGrid>
+            <Stat label="대출액" value={formatKrwKorean(result.loanKrw)} hint={`LTV ${result.ltvPct.toFixed(1)}%`} />
+            <Stat label="월 상환액" value={formatKrwKorean(result.monthlyPaymentKrw)} hint={`${termYears}년 ${REPAYMENTS.find((row) => row.key === repayment)?.label}`} tone="accent" />
+            <Stat label="총 이자" value={formatKrwKorean(result.totalInterestKrw)} hint={`총 상환의 ${interestShare.toFixed(1)}%`} />
+            <Stat label="필요 연소득" value={formatKrwKorean(result.requiredAnnualIncomeKrw)} hint="DSR 40% 기준" />
+          </StatGrid>
 
           <Card title="금리 구간별 월 상환액" subtitle="현재 조건(가격·자기자본·기간·상환방식)을 고정하고 금리만 바꾼 값">
             <LineChart
@@ -173,51 +176,50 @@ export default function RateLab() {
                   points: sensitivity.map((row) => ({ label: `${row.annualRatePct.toFixed(1)}%`, value: row.monthlyPaymentKrw })),
                 },
               ]}
-              height={230}
+              height={214}
               formatValue={(value) => `${Math.round(value / 10_000).toLocaleString('ko-KR')}만`}
               xTickCount={10}
             />
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              <div className="rounded-lg border border-slate-200 px-3 py-2">
-                <p className="text-[11px] text-slate-500">금리 1%p 상승 시</p>
-                <p className="num mt-0.5 text-sm font-semibold text-ink-800">
+              <div className="rounded-md border border-line px-3 py-2">
+                <p className="text-[11px] text-ink-400">금리 1%p 상승 시</p>
+                <p className="num mt-0.5 text-[12.5px] font-semibold text-ink-900">
                   월 {formatKrwKorean(Math.abs((sensitivity.find((row) => Math.abs(row.annualRatePct - (rate + 1)) < 0.26)?.monthlyPaymentKrw ?? result.monthlyPaymentKrw) - result.monthlyPaymentKrw))} 증가
                 </p>
               </div>
-              <div className="rounded-lg border border-slate-200 px-3 py-2">
-                <p className="text-[11px] text-slate-500">현재 금리 {rate.toFixed(2)}% 기준</p>
-                <p className="num mt-0.5 text-sm font-semibold text-ink-800">
+              <div className="rounded-md border border-line px-3 py-2">
+                <p className="text-[11px] text-ink-400">현재 금리 {rate.toFixed(2)}% 기준</p>
+                <p className="num mt-0.5 text-[12.5px] font-semibold text-ink-900">
                   월 {formatNumber(result.monthlyPaymentKrw)}원 · 연 {formatKrwKorean(result.monthlyPaymentKrw * 12)}
                 </p>
-                {current && <p className="text-[10px] text-slate-400">차트 값과 일치</p>}
               </div>
             </div>
           </Card>
         </div>
       </div>
 
-      <Card title="금리 시나리오 표" subtitle="같은 표를 리포트로 저장할 때 필요한 값(총 이자·필요 소득)을 함께 계산">
+      <Card title="금리 시나리오 표" subtitle="같은 조건에서 금리만 바꿨을 때의 월 상환액·총 이자·필요 소득">
         <div className="scroll-thin overflow-x-auto">
           <table className="w-full min-w-[560px] border-collapse text-sm">
             <thead>
               <tr className="table-head">
-                <th className="px-2 py-2">금리</th>
-                <th className="px-2 py-2 text-right">월 상환액</th>
-                <th className="px-2 py-2 text-right">총 이자</th>
-                <th className="px-2 py-2 text-right">필요 연소득(DSR 40%)</th>
-                <th className="px-2 py-2 text-right">현재 대비</th>
+                <th className="px-2 py-[7px]">금리</th>
+                <th className="px-2 py-[7px] text-right">월 상환액</th>
+                <th className="px-2 py-[7px] text-right">총 이자</th>
+                <th className="px-2 py-[7px] text-right">필요 연소득(DSR 40%)</th>
+                <th className="px-2 py-[7px] text-right">현재 대비</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-line-soft">
               {sensitivity.map((row) => {
                 const diff = row.monthlyPaymentKrw - result.monthlyPaymentKrw;
                 return (
-                  <tr key={row.annualRatePct} className={Math.abs(row.annualRatePct - rate) < 0.26 ? 'bg-teal-50/60' : ''}>
-                    <td className="num px-2 py-1.5 text-xs font-semibold text-slate-700">{row.annualRatePct.toFixed(1)}%</td>
-                    <td className="num px-2 py-1.5 text-right text-xs text-slate-700">{formatKrwKorean(row.monthlyPaymentKrw)}</td>
-                    <td className="num px-2 py-1.5 text-right text-xs text-slate-500">{formatKrwKorean(row.totalInterestKrw)}</td>
-                    <td className="num px-2 py-1.5 text-right text-xs text-slate-500">{formatKrwKorean(row.requiredAnnualIncomeKrw)}</td>
-                    <td className={`num px-2 py-1.5 text-right text-xs ${diff > 0 ? 'text-rose-600' : diff < 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  <tr key={row.annualRatePct} className={Math.abs(row.annualRatePct - rate) < 0.26 ? 'bg-canvas' : ''}>
+                    <td className="num px-2 py-[6px] text-[11.5px] font-semibold text-ink-700">{row.annualRatePct.toFixed(1)}%</td>
+                    <td className="num px-2 py-[6px] text-right text-[11.5px] text-ink-700">{formatKrwKorean(row.monthlyPaymentKrw)}</td>
+                    <td className="num px-2 py-[6px] text-right text-[11.5px] text-ink-500">{formatKrwKorean(row.totalInterestKrw)}</td>
+                    <td className="num px-2 py-[6px] text-right text-[11.5px] text-ink-500">{formatKrwKorean(row.requiredAnnualIncomeKrw)}</td>
+                    <td className={`num px-2 py-[6px] text-right text-[11.5px] ${diff > 0 ? 'text-rose-700' : diff < 0 ? 'text-emerald-700' : 'text-ink-300'}`}>
                       {diff === 0 ? '기준' : `${diff > 0 ? '+' : '-'}${formatKrwKorean(Math.abs(diff))}`}
                     </td>
                   </tr>
@@ -232,16 +234,6 @@ export default function RateLab() {
         월 상환액은 원금·이자만 계산한 값입니다. 실제 금융기관은 인지세, 보증료, 우대금리, 거치기간, DSR 산정 시 다른 대출을
         함께 반영하므로 이 화면의 숫자는 조건 비교용입니다.
       </DataNote>
-    </div>
-  );
-}
-
-function ResultTile({ label, value, hint, highlight = false }: { label: string; value: string; hint: string; highlight?: boolean }) {
-  return (
-    <div className={`card card-pad ${highlight ? 'border-teal-500/50 ring-1 ring-teal-500/20' : ''}`}>
-      <p className="label">{label}</p>
-      <p className={`num mt-1 text-lg font-semibold ${highlight ? 'text-teal-700' : 'text-ink-800'}`}>{value}</p>
-      <p className="mt-0.5 text-[11px] text-slate-400">{hint}</p>
     </div>
   );
 }

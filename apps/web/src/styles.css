@@ -4,6 +4,11 @@
 
 :root {
   color-scheme: light;
+  --line: #e6e8ec;
+  --line-soft: #eff1f4;
+  --canvas: #f7f8fa;
+  --ink-900: #0f1620;
+  --accent: #0e7c6b;
 }
 
 html,
@@ -13,68 +18,200 @@ body,
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-canvas text-ink-900 antialiased;
   margin: 0;
+  letter-spacing: -0.01em;
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: #cdeae4;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.015em;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgba(14, 124, 107, 0.45);
+    outline-offset: 2px;
+  }
+
+  button,
+  select,
+  input {
+    font: inherit;
+  }
 }
 
 @layer components {
+  /* 카드는 그림자 대신 1px 헤어라인으로 경계를 만든다. */
   .card {
-    @apply rounded-xl border border-slate-200 bg-white shadow-card;
+    @apply rounded-[10px] border border-line bg-white;
   }
   .card-pad {
-    @apply p-4 sm:p-5;
+    @apply p-4 sm:p-[18px];
   }
+  .card-head {
+    @apply flex flex-wrap items-start justify-between gap-2 border-b border-line px-4 py-[11px] sm:px-[18px];
+  }
+  .card-title {
+    @apply text-[13px] font-semibold tracking-[-0.01em] text-ink-900;
+  }
+  .card-sub {
+    @apply mt-0.5 text-[11.5px] leading-relaxed text-ink-400;
+  }
+
   .label {
-    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500;
+    @apply text-[10.5px] font-semibold uppercase tracking-[0.09em] text-ink-400;
+  }
+  .meta {
+    @apply text-[11px] text-ink-400;
   }
   .num {
-    @apply font-mono tabular-nums;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
   }
+
+  /* 상단 KPI 스트립: 한 장의 판에 4칸을 나누고 칸 사이만 헤어라인으로 긋는다. */
+  .stat-grid {
+    @apply grid grid-cols-2 overflow-hidden rounded-[10px] border border-line bg-white xl:grid-cols-4;
+  }
+  .stat-grid > * + * {
+    border-left: 1px solid var(--line);
+  }
+  .stat-grid > *:nth-child(odd) {
+    border-left: 0;
+  }
+  .stat-grid > *:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+  .stat {
+    @apply px-3.5 py-3 sm:px-[18px] sm:py-4;
+  }
+  .stat-value {
+    @apply num mt-1.5 text-[19px] font-semibold leading-none tracking-[-0.03em] text-ink-900 sm:text-[23px] xl:text-[25px];
+  }
+  .stat-hint {
+    @apply mt-1.5 text-[11px] leading-relaxed text-ink-400;
+  }
+
+  /* 필터·이동 칩: 기본은 테두리 없는 조용한 텍스트, 선택된 것만 잉크색으로 채운다. */
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900;
+    @apply inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-md border border-transparent px-2.5 text-[12px] font-medium text-ink-600 transition-colors hover:bg-slate-100 hover:text-ink-900;
   }
   .chip-active {
-    @apply border-ink-800 bg-ink-800 text-white hover:border-ink-800 hover:text-white;
+    @apply border-ink-900 bg-ink-900 text-white hover:bg-ink-800 hover:text-white;
   }
+  .chip-active .chip-count {
+    @apply text-white/60;
+  }
+  .chip-count {
+    @apply text-[10px] font-normal text-ink-300;
+  }
+
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg bg-ink-800 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-ink-900 px-3 text-[12.5px] font-medium text-white transition-colors hover:bg-ink-800 disabled:cursor-not-allowed disabled:opacity-40;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50;
+    @apply inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-line bg-white px-2.5 text-[12.5px] font-medium text-ink-700 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40;
   }
   .select {
-    @apply w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-600/15;
+    @apply h-9 w-full appearance-none rounded-md border border-line bg-white px-2.5 text-[12.5px] text-ink-800 outline-none transition-colors hover:border-slate-300 focus:border-accent focus:ring-2 focus:ring-accent/15;
   }
+  select.select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%238E98A6' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    padding-right: 26px;
+  }
+
+  .filter-bar {
+    @apply rounded-[10px] border border-line bg-white px-3 py-2.5 sm:px-4;
+  }
+  .toolbar {
+    @apply flex flex-wrap items-center gap-x-2 gap-y-1.5;
+  }
+
   .table-head {
-    @apply border-b border-slate-200 bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500;
+    @apply border-b border-line bg-white text-left text-[10.5px] font-semibold uppercase tracking-[0.07em] text-ink-400;
+  }
+  .table-head th {
+    @apply whitespace-nowrap;
+  }
+  /* 표만 따로 스크롤할 때 머리글을 붙여 둔다. */
+  .table-scroll .table-head th {
+    @apply sticky top-0 z-[1] bg-white;
+  }
+
+  .tab {
+    @apply whitespace-nowrap border-b-2 border-transparent px-2.5 py-2.5 text-[12px] font-medium text-ink-500 transition-colors hover:text-ink-900;
+  }
+  .tab-active {
+    @apply border-ink-900 text-ink-900;
+  }
+
+  .note {
+    @apply border-t border-line pt-2.5 text-[11px] leading-relaxed text-ink-400;
+  }
+
+  .status {
+    @apply inline-flex items-center gap-1.5 text-[11px] font-medium text-ink-600;
+  }
+  .dot {
+    @apply inline-block h-1.5 w-1.5 shrink-0 rounded-full;
+  }
+}
+
+@media (min-width: 1280px) {
+  .stat-grid > * {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+  .stat-grid > *:first-child {
+    border-left: 0;
   }
 }
 
 .range {
   -webkit-appearance: none;
   appearance: none;
-  height: 4px;
+  height: 16px;
+  background: linear-gradient(#e2e8f0, #e2e8f0) center / 100% 2px no-repeat;
+  outline: none;
+  cursor: pointer;
+}
+.range::-webkit-slider-runnable-track {
+  height: 2px;
   border-radius: 999px;
   background: #e2e8f0;
-  outline: none;
+}
+.range::-moz-range-track {
+  height: 2px;
+  border-radius: 999px;
+  background: #e2e8f0;
 }
 .range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 999px;
-  background: #0f766e;
-  border: 3px solid #ffffff;
-  box-shadow: 0 0 0 1px #0f766e;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 3px rgba(15, 22, 32, 0.18);
   cursor: pointer;
 }
 .range::-moz-range-thumb {
   width: 14px;
   height: 14px;
   border-radius: 999px;
-  background: #0f766e;
-  border: 3px solid #ffffff;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 3px rgba(15, 22, 32, 0.18);
   cursor: pointer;
 }
 
@@ -83,6 +220,17 @@ body {
   width: 8px;
 }
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #d4d9e0;
   border-radius: 999px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 접이식 설명은 제목 줄만 남겨 첫 화면의 정보 밀도를 지킨다. */
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
 }

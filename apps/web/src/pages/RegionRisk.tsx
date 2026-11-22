@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { JEONSE_RATIO_BANDS, jeonseRiskLevel, riskLevelLabel } from '@prop/shared';
-import { Card, DataNote, RiskBadge } from '../components/ui';
+import { Card, DataNote, FilterLabel, RiskBadge, Stat, StatGrid } from '../components/ui';
 import { BarChart, LineChart, Sparkline } from '../components/charts';
 import {
   PRICE_ANOMALIES,
@@ -76,47 +76,73 @@ export default function RegionRisk() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="label mr-1">비교 구</span>
-        <button type="button" className={`chip ${lawdCd === null ? 'chip-active' : ''}`} onClick={() => setLawdCd(null)} aria-pressed={lawdCd === null}>
-          전체 6개 구
-        </button>
-        {REGION_RISK_SUMMARIES.map((row) => (
-          <button
-            key={row.lawdCd}
-            type="button"
-            className={`chip ${lawdCd === row.lawdCd ? 'chip-active' : ''}`}
-            onClick={() => setLawdCd(row.lawdCd)}
-            aria-pressed={lawdCd === row.lawdCd}
-          >
-            {row.sigungu}
+      <div className="filter-bar">
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
+          <FilterLabel>비교 구</FilterLabel>
+          <button type="button" className={`chip ${lawdCd === null ? 'chip-active' : ''}`} onClick={() => setLawdCd(null)} aria-pressed={lawdCd === null}>
+            전체 6개 구
           </button>
-        ))}
-        <span className="ml-auto text-[11px] text-slate-500">
-          대표 전용면적(84㎡·25평) 구간 기준 · 전월세 표본 {formatNumber(dataset.rentTransactions.length)}건
-        </span>
+          {REGION_RISK_SUMMARIES.map((row) => (
+            <button
+              key={row.lawdCd}
+              type="button"
+              className={`chip ${lawdCd === row.lawdCd ? 'chip-active' : ''}`}
+              onClick={() => setLawdCd(row.lawdCd)}
+              aria-pressed={lawdCd === row.lawdCd}
+            >
+              {row.sigungu}
+            </button>
+          ))}
+          <span className="ml-auto pl-2 text-[10.5px] text-ink-400">
+            대표 전용면적(84㎡·25평) 구간 기준 · 전월세 표본 {formatNumber(dataset.rentTransactions.length)}건
+          </span>
+        </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Tile label="중위 전세가율" value={`${summary?.medianJeonseRatioPct.toFixed(1) ?? '0'}%`} hint={`주의 ${JEONSE_RATIO_BANDS.warning}% · 경고 ${JEONSE_RATIO_BANDS.high}% · 위험 ${JEONSE_RATIO_BANDS.critical}%`} />
-        <Tile label="중위 평당가" value={formatPyeongPrice(summary?.medianPricePerPyeong ?? 0)} hint={`단지 ${summary?.complexCount ?? 0}곳`} />
-        <Tile label="최근 12개월 거래" value={`${formatNumber(summary?.volume12m ?? 0)}건`} hint="해제 거래 제외" />
-        <Tile
+      <StatGrid>
+        <Stat label="중위 전세가율" value={`${summary?.medianJeonseRatioPct.toFixed(1) ?? '0'}%`} hint={`주의 ${JEONSE_RATIO_BANDS.warning}% · 경고 ${JEONSE_RATIO_BANDS.high}% · 위험 ${JEONSE_RATIO_BANDS.critical}%`} />
+        <Stat label="중위 평당가" value={formatPyeongPrice(summary?.medianPricePerPyeong ?? 0)} hint={`단지 ${summary?.complexCount ?? 0}곳`} />
+        <Stat label="최근 12개월 거래" value={`${formatNumber(summary?.volume12m ?? 0)}건`} hint="해제 거래 제외" />
+        <Stat
           label="고위험 단지"
           value={`${summary?.highRiskCount ?? 0}곳`}
           hint={`이상 거래 ${summary?.anomalyCount ?? 0}건 · 평균 점수 ${summary?.averageScore ?? 0}`}
+          tone={summary && summary.highRiskCount > 0 ? 'down' : 'default'}
         />
-      </div>
+      </StatGrid>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card title="구별 중위 평당가" subtitle="전용면적 환산 · 최근월 중위값">
-          <BarChart ariaLabel="구별 중위 평당가 막대 그래프" points={pricePoints} formatValue={formatPyeongPrice} height={170} color="#12355f" />
+          <BarChart
+            ariaLabel="구별 중위 평당가 막대 그래프"
+            points={pricePoints}
+            formatValue={formatPyeongPrice}
+            formatLabel={(value) => `${Math.round(value / 10_000).toLocaleString('ko-KR')}만`}
+            formatAxis={(value) => (value === 0 ? '0' : `${Math.round(value / 10_000).toLocaleString('ko-KR')}만`)}
+            height={156}
+            width={360}
+            color="#1c2533"
+          />
         </Card>
         <Card title="구별 중위 전세가율" subtitle="80% 이상은 경고 구간">
-          <BarChart ariaLabel="구별 중위 전세가율 막대 그래프" points={ratioPoints} formatValue={(value) => `${value.toFixed(1)}%`} height={170} color="#0f766e" />
+          <BarChart
+            ariaLabel="구별 중위 전세가율 막대 그래프"
+            points={ratioPoints}
+            formatValue={(value) => `${value.toFixed(1)}%`}
+            height={156}
+            width={360}
+            color="#0e7c6b"
+          />
         </Card>
         <Card title="구별 12개월 거래량" subtitle="표본 수 기준">
-          <BarChart ariaLabel="구별 12개월 거래량 막대 그래프" points={volumePoints} formatValue={(value) => `${Math.round(value)}건`} height={170} color="#b45309" />
+          <BarChart
+            ariaLabel="구별 12개월 거래량 막대 그래프"
+            points={volumePoints}
+            formatValue={(value) => `${Math.round(value)}건`}
+            height={156}
+            width={360}
+            color="#5b6a86"
+          />
         </Card>
       </div>
 
@@ -128,14 +154,13 @@ export default function RegionRisk() {
         <LineChart
           ariaLabel="부산 6개 구 전세가율 추이 선 그래프"
           series={trendSeries}
-          height={240}
+          height={228}
           formatValue={(value) => `${value.toFixed(1)}%`}
           formatAxis={(value) => `${Math.round(value)}%`}
         />
         <DataNote>
-          전세가율은 <span className="num">전세 보증금 평당가 ÷ 매매 평당가 × 100</span>으로 계산합니다. 같은 단지라도 59㎡(18평)와
-          84㎡(25평)는 평당가 수준이 달라, 같은 면적 구간(5㎡)에서 매칭한 값만 씁니다. 실서비스에서는{' '}
-          <span className="num">v_jeonse_ratio_monthly</span> 뷰가 같은 정의로 계산합니다.
+          전세가율은 <span className="num text-ink-700">전세 보증금 평당가 ÷ 매매 평당가 × 100</span>으로 계산합니다. 같은 단지라도 59㎡(18평)와
+          84㎡(25평)는 평당가 수준이 달라, 같은 면적 구간(5㎡)에서 매칭한 값만 씁니다. 단지 2곳 미만이 남는 달은 비웁니다.
         </DataNote>
       </Card>
 
@@ -153,120 +178,116 @@ export default function RegionRisk() {
             </select>
           }
         >
-          <div className="scroll-thin -mx-1 overflow-x-auto px-1">
+          <div className="table-scroll scroll-thin -mx-1 max-h-[552px] overflow-auto px-1">
             <table className="w-full min-w-[640px] border-collapse text-sm" data-testid="risk-table">
               <thead>
                 <tr className="table-head">
-                  <th className="px-2 py-2">단지</th>
-                  <th className="px-2 py-2 text-right">전세가율</th>
-                  <th className="px-2 py-2 text-right">6개월</th>
-                  <th className="px-2 py-2 text-right">12개월 거래</th>
-                  <th className="px-2 py-2 text-right">이상</th>
-                  <th className="px-2 py-2 text-right">점수</th>
+                  <th className="px-2 py-[7px]">단지</th>
+                  <th className="px-2 py-[7px] text-right">전세가율</th>
+                  <th className="px-2 py-[7px] text-right">6개월</th>
+                  <th className="px-2 py-[7px] text-right">12개월 거래</th>
+                  <th className="px-2 py-[7px] text-right">이상</th>
+                  <th className="px-2 py-[7px] text-right">점수</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr
                     key={row.complexId}
-                    className={`cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50/80 ${
-                      selectedId === row.complexId ? 'bg-teal-50/60' : ''
+                    className={`cursor-pointer border-b border-line-soft transition-colors last:border-0 hover:bg-canvas ${
+                      selectedId === row.complexId ? 'bg-canvas' : ''
                     }`}
                     onClick={() => openComplex(row.complexId, row.complexName)}
                     data-testid={`risk-row-${row.complexId}`}
                   >
-                    <td className="px-2 py-2">
-                      <span className="text-[13px] font-medium text-slate-800">{row.complexName}</span>
-                      <span className="ml-1 text-[10px] text-slate-400">
+                    <td className="px-2 py-[7px]">
+                      <span className="text-[12.5px] font-medium text-ink-800">{row.complexName}</span>
+                      <span className="ml-1.5 text-[10px] text-ink-300">
                         {row.sigungu} {row.dong}
                       </span>
                     </td>
-                    <td className="num px-2 py-2 text-right">
-                      <span className="text-[13px] font-semibold text-ink-800">{row.jeonseRatioPct.toFixed(1)}%</span>
-                      <span className="ml-1 inline-block align-middle">
+                    <td className="num px-2 py-[7px] text-right">
+                      <span className="text-[12.5px] font-semibold text-ink-900">{row.jeonseRatioPct.toFixed(1)}%</span>
+                      <span className="ml-1.5 inline-block align-middle">
                         <RiskBadge level={jeonseRiskLevel(row.jeonseRatioPct)} />
                       </span>
                     </td>
-                    <td className={`num px-2 py-2 text-right text-xs ${row.change6mPct < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                    <td className={`num px-2 py-[7px] text-right text-[11.5px] ${row.change6mPct < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
                       {formatPct(row.change6mPct)}
                     </td>
-                    <td className="num px-2 py-2 text-right text-xs text-slate-600">{row.volume12m}건</td>
-                    <td className="num px-2 py-2 text-right text-xs text-slate-600">{row.anomalyCount}건</td>
-                    <td className="num px-2 py-2 text-right text-[13px] font-semibold text-slate-800">
+                    <td className="num px-2 py-[7px] text-right text-[11.5px] text-ink-500">{row.volume12m}건</td>
+                    <td className="num px-2 py-[7px] text-right text-[11.5px] text-ink-500">{row.anomalyCount}건</td>
+                    <td className="num px-2 py-[7px] text-right text-[12.5px] font-semibold text-ink-800">
                       {row.score}
-                      <span className="ml-1 text-[10px] font-normal text-slate-400">{riskLevelLabel(row.level)}</span>
+                      <span className="ml-1 text-[10px] font-normal text-ink-300">{riskLevelLabel(row.level)}</span>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-[11px] text-slate-400">행을 누르면 상세 신호가 열리고 listing_click 이벤트가 기록됩니다.</p>
+          <p className="mt-2 text-[10.5px] text-ink-300">행을 누르면 전세가율·갭·위험 신호가 열립니다.</p>
         </Card>
 
         <Card title={selected ? `${selected.complexName} 상세` : '단지 상세'} subtitle={selected ? `${selected.sigungu} ${selected.dong} · 기준월 ${selected.asOfMonth}` : '왼쪽 표에서 단지를 선택하세요'}>
           {!selected ? (
-            <p className="py-10 text-center text-sm text-slate-400">표의 행을 누르면 전세가율·갭·리스크 근거가 표시됩니다.</p>
+            <p className="py-10 text-center text-[12px] text-ink-400">표의 행을 누르면 전세가율·갭·리스크 근거가 표시됩니다.</p>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start justify-between gap-3 border-b border-line-soft pb-3">
                 <div>
                   <p className="label">전세가율</p>
-                  <p className="num text-2xl font-semibold text-ink-900">{selected.jeonseRatioPct.toFixed(1)}%</p>
+                  <p className="num mt-1 text-[26px] font-semibold leading-none tracking-[-0.03em] text-ink-900">{selected.jeonseRatioPct.toFixed(1)}%</p>
                 </div>
                 <RiskBadge level={selected.level} />
               </div>
-              <dl className="grid grid-cols-2 gap-2 text-[11px]">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[11px]">
                 <div>
-                  <dt className="text-slate-400">매매 중위</dt>
-                  <dd className="num font-semibold text-slate-700">{formatKrwKorean(selected.saleMedianKrw)}</dd>
+                  <dt className="text-ink-400">매매 중위</dt>
+                  <dd className="num mt-0.5 text-[12px] font-semibold text-ink-800">{formatKrwKorean(selected.saleMedianKrw)}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-400">전세 중위</dt>
-                  <dd className="num font-semibold text-slate-700">{formatKrwKorean(selected.jeonseMedianKrw)}</dd>
+                  <dt className="text-ink-400">전세 중위</dt>
+                  <dd className="num mt-0.5 text-[12px] font-semibold text-ink-800">{formatKrwKorean(selected.jeonseMedianKrw)}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-400">
+                  <dt className="text-ink-400">
                     갭
-                    <span className="block text-[10px] text-slate-400">
+                    <span className="block text-[10px] text-ink-300">
                       {formatArea(selectedComplexArea)}·{formatPyeong(selectedComplexArea)} 기준
                     </span>
                   </dt>
-                  <dd className="num font-semibold text-slate-700">{formatKrwKorean(selected.gapKrw)}</dd>
+                  <dd className="num mt-0.5 text-[12px] font-semibold text-ink-800">{formatKrwKorean(selected.gapKrw)}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-400">12개월 변화</dt>
-                  <dd className={`num font-semibold ${selected.change12mPct < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  <dt className="text-ink-400">12개월 변화</dt>
+                  <dd className={`num mt-0.5 text-[12px] font-semibold ${selected.change12mPct < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
                     {formatPct(selected.change12mPct)}
                   </dd>
                 </div>
               </dl>
-              <div>
-                <div className="flex items-center justify-between">
-                  <p className="label">전세가율 최근 12개월</p>
-                  <Sparkline values={selectedSeries.slice(-12).map((row) => row.ratioPct)} />
-                </div>
+              <div className="flex items-center justify-between gap-2 border-t border-line-soft pt-2.5">
+                <p className="label">전세가율 최근 12개월</p>
+                <Sparkline values={selectedSeries.slice(-12).map((row) => row.ratioPct)} />
               </div>
-              <ul className="space-y-1.5">
-                {selected.signals.length === 0 && <li className="rounded-lg bg-slate-50 px-2.5 py-2 text-[11px] text-slate-500">현재 기준으로 두드러진 위험 신호가 없습니다.</li>}
+              <ul className="space-y-2">
+                {selected.signals.length === 0 && <li className="text-[11px] text-ink-400">현재 기준으로 두드러진 위험 신호가 없습니다.</li>}
                 {selected.signals.map((signal) => (
-                  <li key={signal.code} className="rounded-lg bg-slate-50 px-2.5 py-2">
-                    <div className="flex items-center gap-1.5">
-                      <RiskBadge level={signal.level}>{signal.label}</RiskBadge>
-                    </div>
-                    <p className="mt-1 text-[11px] leading-relaxed text-slate-600">{signal.detail}</p>
+                  <li key={signal.code} className="border-l-2 border-line pl-2.5">
+                    <RiskBadge level={signal.level}>{signal.label}</RiskBadge>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-ink-500">{signal.detail}</p>
                   </li>
                 ))}
               </ul>
               {selectedAnomalies.length > 0 && (
-                <div>
-                  <p className="label mb-1">이상 거래 표본</p>
-                  <ul className="space-y-1">
+                <div className="border-t border-line-soft pt-2.5">
+                  <p className="label mb-1.5">이상 거래 표본</p>
+                  <ul className="divide-y divide-line-soft">
                     {selectedAnomalies.map((row) => (
-                      <li key={row.dealHash} className="flex items-center justify-between gap-2 rounded bg-white px-2 py-1 text-[10px] text-slate-600 ring-1 ring-slate-100">
+                      <li key={row.dealHash} className="flex items-center justify-between gap-2 py-1 text-[10.5px] text-ink-500">
                         <span className="num">{formatDate(row.dealDate)}</span>
                         <span className="num">{formatKrwKorean(row.priceKrw)}</span>
-                        <span className={`num font-semibold ${row.deviationPct < 0 ? 'text-rose-600' : 'text-amber-600'}`}>{formatPct(row.deviationPct)}</span>
+                        <span className={`num font-semibold ${row.deviationPct < 0 ? 'text-rose-700' : 'text-amber-700'}`}>{formatPct(row.deviationPct)}</span>
                       </li>
                     ))}
                   </ul>
@@ -279,18 +300,8 @@ export default function RegionRisk() {
 
       <DataNote>
         리스크 점수는 계약 판단을 돕기 위한 화면 지표입니다. 감정평가나 투자 권유가 아니고, 표본이 적은 단지는 점수가 과대·과소
-        평가될 수 있습니다. 전세가율·이상치 계산은 packages/shared/src/risk.ts 한 곳에서 관리하고 테스트로 고정했습니다.
+        평가될 수 있습니다. 전세가율·이상 거래 계산은 화면과 API가 같은 정의를 사용합니다.
       </DataNote>
-    </div>
-  );
-}
-
-function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="card card-pad">
-      <p className="label">{label}</p>
-      <p className="num mt-1 text-xl font-semibold text-ink-800">{value}</p>
-      {hint && <p className="mt-0.5 text-[10px] leading-relaxed text-slate-400">{hint}</p>}
     </div>
   );
 }

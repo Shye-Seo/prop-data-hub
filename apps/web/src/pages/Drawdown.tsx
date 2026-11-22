@@ -7,7 +7,7 @@ import {
   summarizeDrawdown,
   type AreaBandKey,
 } from '@prop/shared';
-import { Card, DataNote, EmptyState } from '../components/ui';
+import { Card, DataNote, EmptyState, FilterLabel, Stat, StatGrid } from '../components/ui';
 import { BarChart } from '../components/charts';
 import { formatAreaWithPyeong, formatKrwKorean, formatMonth, formatNumber, formatPct, formatPyeongPrice } from '../lib/format';
 import { dataset } from '../lib/dataset';
@@ -89,14 +89,13 @@ export default function Drawdown() {
         title="하락률 조건"
         subtitle={`${DRAWDOWN_LARGE_COMPLEX_HOUSEHOLDS}세대 이상 · 24개월 전고점 대비 · 같은 단지·5㎡ 구간의 3개월 이동 중위 평당가`}
         action={
-          <span className="num text-[11px] text-slate-400">
-            기준월 {DRAWDOWN_SET.asOfMonth} · 평가 구간 {DRAWDOWN_SET.universe.evaluatedBands}개 · 표본 부족 제외{' '}
-            {DRAWDOWN_SET.universe.skippedThinBands}개
+          <span className="num text-[10.5px] text-ink-300">
+            기준월 {DRAWDOWN_SET.asOfMonth} · 평가 구간 {DRAWDOWN_SET.universe.evaluatedBands}개 · 표본 부족 제외 {DRAWDOWN_SET.universe.skippedThinBands}개
           </span>
         }
       >
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="구 선택">
-          <span className="label mr-1">구</span>
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-1" role="group" aria-label="구 선택">
+          <FilterLabel>구</FilterLabel>
           <button
             type="button"
             className={`chip ${lawdCds.length === 0 ? 'chip-active' : ''}`}
@@ -122,15 +121,15 @@ export default function Drawdown() {
                 data-testid={`drawdown-district-${row.lawdCd}`}
               >
                 {row.sigungu}
-                <span className="ml-1 text-[10px] opacity-60">{count}곳</span>
+                <span className="chip-count">{count}곳</span>
               </button>
             );
           })}
         </div>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-3 grid gap-3 border-t border-line-soft pt-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-slate-600">면적대</span>
+            <span className="mb-1.5 block text-[11.5px] font-medium text-ink-600">면적대</span>
             <select
               className="select"
               value={areaBand}
@@ -150,7 +149,7 @@ export default function Drawdown() {
           </label>
 
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-slate-600">세대수 하한</span>
+            <span className="mb-1.5 block text-[11.5px] font-medium text-ink-600">세대수 하한</span>
             <select
               className="select"
               value={minHouseholds}
@@ -165,41 +164,41 @@ export default function Drawdown() {
             </select>
           </label>
 
-          <label className="flex cursor-pointer items-center gap-2 self-end rounded-lg border border-slate-200 bg-white px-3 py-2">
+          <label className="flex h-9 w-fit cursor-pointer items-center gap-2 self-end rounded-md border border-line bg-white px-2.5">
             <input
               type="checkbox"
-              className="h-4 w-4 accent-teal-600"
+              className="h-3.5 w-3.5 accent-accent"
               checked={onlyDeclined}
               onChange={(event) => setOnlyDeclined(event.target.checked)}
               data-testid="drawdown-only-declined"
             />
-            <span className="text-xs text-slate-700">하락 단지만 보기</span>
+            <span className="text-[12px] text-ink-700">하락 단지만 보기</span>
           </label>
-
-          <div className="self-end rounded-lg bg-slate-50 px-3 py-2 text-[10px] leading-relaxed text-slate-500">
-            전체 면적은 단지 대표 면적(거래가 가장 많은 5㎡ 구간)입니다. 면적대를 고르면 같은 ㎡ (평) 기준으로 비교합니다.
-          </div>
         </div>
+        <p className="mt-2 text-[10px] leading-relaxed text-ink-300">
+          전체 면적은 단지 대표 면적(거래가 가장 많은 5㎡ 구간)입니다. 면적대를 고르면 같은 ㎡ (평) 기준으로 비교합니다.
+        </p>
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Tile label="평가 단지" value={`${formatNumber(summary.count)}곳`} hint={`세대 합계 ${formatNumber(summary.totalHouseholds)}세대`} testId="drawdown-count" />
-        <Tile label="하락 단지" value={`${formatNumber(summary.declinedCount)}곳`} hint={summary.count > 0 ? `${((summary.declinedCount / summary.count) * 100).toFixed(0)}%가 전고점 아래` : '-'} />
-        <Tile label="중위 하락률" value={summary.count === 0 ? '-' : formatPct(summary.medianDrawdownPct)} hint="단지별 대표 면적 기준" />
-        <Tile
+      <StatGrid>
+        <Stat label="평가 단지" value={`${formatNumber(summary.count)}곳`} hint={`세대 합계 ${formatNumber(summary.totalHouseholds)}세대`} testId="drawdown-count" />
+        <Stat label="하락 단지" value={`${formatNumber(summary.declinedCount)}곳`} hint={summary.count > 0 ? `${((summary.declinedCount / summary.count) * 100).toFixed(0)}%가 전고점 아래` : '-'} />
+        <Stat label="중위 하락률" value={summary.count === 0 ? '-' : formatPct(summary.medianDrawdownPct)} hint="단지별 대표 면적 기준" tone={summary.medianDrawdownPct < 0 ? 'down' : 'default'} />
+        <Stat
           label="최대 낙폭"
           value={summary.worstComplexName ? formatPct(summary.worstDrawdownPct) : '-'}
           hint={summary.worstComplexName ?? '표본 없음'}
           testId="drawdown-worst"
+          tone={summary.worstComplexName ? 'down' : 'default'}
         />
-      </div>
+      </StatGrid>
 
       <Card title="하락률 상위 단지" subtitle="전고점 대비 많이 빠진 순서 · 막대는 하락률(%p)">
         {topDeclines.length > 0 ? (
           <BarChart
             ariaLabel="전고점 대비 하락률 상위 단지 막대 그래프"
             points={topDeclines}
-            height={200}
+            height={150}
             color="#be123c"
             formatValue={(value) => `${value.toFixed(1)}%`}
             formatAxis={(value) => `${value.toFixed(0)}%`}
@@ -212,44 +211,44 @@ export default function Drawdown() {
       <Card
         title="전고점 대비 하락률 랭킹"
         subtitle="24개월 내 최고 월별 중위 평당가 대비 현재 3개월 중위 평당가 · 행을 누르면 근거가 열립니다"
-        action={<span className="text-[11px] text-slate-400">표본 8개월·10건 미만 구간 제외</span>}
+        action={<span className="text-[11px] text-ink-300">표본 8개월·10건 미만 구간 제외</span>}
       >
         {selected && (
-          <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50/50 px-3 py-2.5" data-testid="drawdown-detail">
+          <div className="mb-3 rounded-md border border-line bg-canvas/70 px-3 py-2.5" data-testid="drawdown-detail">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-[13px] font-semibold text-ink-900">
+                <p className="text-[12.5px] font-semibold text-ink-900">
                   {selected.complexName} · {formatAreaWithPyeong(selected.areaM2)}
                 </p>
-                <p className="num mt-0.5 text-[11px] text-slate-600">
-                  {selected.sigungu} {selected.dong} · {formatNumber(selected.households)}세대 · {selected.builtYear}년 준공 · 표본{' '}
-                  {selected.sampleCount}건/{selected.monthCount}개월
+                <p className="num mt-0.5 text-[11px] text-ink-500">
+                  {selected.sigungu} {selected.dong} · {formatNumber(selected.households)}세대 · {selected.builtYear}년 준공 · 표본 {selected.sampleCount}건/{selected.monthCount}개월
                 </p>
               </div>
-              <span className="rounded-full border border-rose-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-700">
+              <span className="status text-rose-700">
+                <span className="dot bg-rose-500" aria-hidden="true" />
                 {formatPct(selected.drawdownPct)} · {formatKrwKorean(selected.drawdownKrw)} 하락
               </span>
             </div>
-            <dl className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
+            <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-line-soft pt-2.5 text-[11px] sm:grid-cols-4">
               <div>
-                <dt className="text-slate-400">전고점</dt>
-                <dd className="num font-semibold text-slate-700">
+                <dt className="text-ink-300">전고점</dt>
+                <dd className="num font-semibold text-ink-700">
                   {formatMonth(selected.peakMonth)} · {formatKrwKorean(selected.peakPriceKrw)}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-400">현재(3개월 중위)</dt>
-                <dd className="num font-semibold text-slate-700">
+                <dt className="text-ink-300">현재(3개월 중위)</dt>
+                <dd className="num font-semibold text-ink-700">
                   {formatMonth(selected.currentMonth)} · {formatKrwKorean(selected.currentPriceKrw)}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-400">평당가 낙폭</dt>
-                <dd className="num font-semibold text-rose-600">{formatPyeongPrice(selected.pppDropKrw)}</dd>
+                <dt className="text-ink-300">평당가 낙폭</dt>
+                <dd className="num font-semibold text-rose-700">{formatPyeongPrice(selected.pppDropKrw)}</dd>
               </div>
               <div>
-                <dt className="text-slate-400">전고점 평당가</dt>
-                <dd className="num font-semibold text-slate-700">{formatPyeongPrice(selected.peakPricePerPyeong)}</dd>
+                <dt className="text-ink-300">전고점 평당가</dt>
+                <dd className="num font-semibold text-ink-700">{formatPyeongPrice(selected.peakPricePerPyeong)}</dd>
               </div>
             </dl>
           </div>
@@ -258,55 +257,55 @@ export default function Drawdown() {
         {entries.length === 0 ? (
           <EmptyState title="조건에 맞는 단지가 없습니다" description="구·면적대·세대수 조건을 넓혀 보세요." />
         ) : (
-          <div className="scroll-thin -mx-1 overflow-x-auto px-1">
+          <div className="table-scroll scroll-thin -mx-1 max-h-[560px] overflow-auto px-1">
             <table className="w-full min-w-[900px] border-collapse text-sm" data-testid="drawdown-table">
               <thead>
                 <tr className="table-head">
-                  <th className="px-2 py-2 text-right">순위</th>
-                  <th className="px-2 py-2">단지</th>
-                  <th className="px-2 py-2">구·동</th>
-                  <th className="px-2 py-2 text-right">면적(㎡·평)</th>
-                  <th className="px-2 py-2 text-right">전고점</th>
-                  <th className="px-2 py-2 text-right">현재</th>
-                  <th className="px-2 py-2 text-right">하락률</th>
-                  <th className="px-2 py-2 text-right">평당가 낙폭</th>
-                  <th className="px-2 py-2 text-right">표본</th>
+                  <th className="px-2 py-[7px] text-right">순위</th>
+                  <th className="px-2 py-[7px]">단지</th>
+                  <th className="px-2 py-[7px]">구·동</th>
+                  <th className="px-2 py-[7px] text-right">면적(㎡·평)</th>
+                  <th className="px-2 py-[7px] text-right">전고점</th>
+                  <th className="px-2 py-[7px] text-right">현재</th>
+                  <th className="px-2 py-[7px] text-right">하락률</th>
+                  <th className="px-2 py-[7px] text-right">평당가 낙폭</th>
+                  <th className="px-2 py-[7px] text-right">표본</th>
                 </tr>
               </thead>
               <tbody>
                 {entries.map((row) => (
                   <tr
                     key={row.complexId}
-                    className={`cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50/70 ${
-                      selectedComplexId === row.complexId ? 'bg-rose-50/40' : ''
+                    className={`cursor-pointer border-b border-line-soft last:border-0 hover:bg-canvas ${
+                      selectedComplexId === row.complexId ? 'bg-canvas' : ''
                     }`}
                     onClick={() => openRow(row)}
                     data-testid={`drawdown-row-${row.complexId}`}
                   >
                     <td className="num px-2 py-2 text-right text-xs font-semibold text-slate-500">{row.rank}</td>
-                    <td className="px-2 py-2">
-                      <span className="text-[13px] font-medium text-slate-800">{row.complexName}</span>
-                      <span className="ml-1 text-[10px] text-slate-400">{formatNumber(row.households)}세대</span>
+                    <td className="px-2 py-[7px]">
+                      <span className="text-[12.5px] font-medium text-ink-800">{row.complexName}</span>
+                      <span className="ml-1 text-[10px] text-ink-300">{formatNumber(row.households)}세대</span>
                     </td>
-                    <td className="px-2 py-2 text-xs text-slate-600">
+                    <td className="px-2 py-[7px] text-[11.5px] text-ink-500">
                       {row.sigungu} {row.dong}
                     </td>
-                    <td className="num px-2 py-2 text-right text-xs text-slate-600">{formatAreaWithPyeong(row.areaM2)}</td>
-                    <td className="num px-2 py-2 text-right text-xs text-slate-600">
+                    <td className="num px-2 py-2 text-right text-[11.5px] text-ink-500">{formatAreaWithPyeong(row.areaM2)}</td>
+                    <td className="num px-2 py-2 text-right text-[11.5px] text-ink-500">
                       {formatKrwKorean(row.peakPriceKrw)}
-                      <span className="block text-[10px] text-slate-400">{formatMonth(row.peakMonth)}</span>
+                      <span className="block text-[10px] text-ink-300">{formatMonth(row.peakMonth)}</span>
                     </td>
-                    <td className="num px-2 py-2 text-right text-xs text-slate-700">
+                    <td className="num px-2 py-2 text-right text-xs text-ink-700">
                       {formatKrwKorean(row.currentPriceKrw)}
-                      <span className="block text-[10px] text-slate-400">{formatMonth(row.currentMonth)}</span>
+                      <span className="block text-[10px] text-ink-300">{formatMonth(row.currentMonth)}</span>
                     </td>
-                    <td className={`num px-2 py-2 text-right text-[13px] font-semibold ${row.drawdownPct < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                    <td className={`num px-2 py-2 text-right text-[12.5px] font-semibold ${row.drawdownPct < 0 ? 'text-rose-700' : 'text-ink-300'}`}>
                       {formatPct(row.drawdownPct)}
                     </td>
-                    <td className="num px-2 py-2 text-right text-xs text-slate-600">
+                    <td className="num px-2 py-2 text-right text-[11.5px] text-ink-500">
                       {row.pppDropKrw > 0 ? formatPyeongPrice(row.pppDropKrw) : '-'}
                     </td>
-                    <td className="num px-2 py-2 text-right text-[10px] text-slate-400">
+                    <td className="num px-2 py-2 text-right text-[10px] text-ink-300">
                       {row.sampleCount}건
                       <span className="block">{row.monthCount}개월</span>
                     </td>
@@ -324,18 +323,6 @@ export default function Drawdown() {
         전체 면적은 단지 대표 면적(거래가 가장 많은 구간)이고, 면적대를 고르면 같은 ㎡ (평) 기준으로 비교합니다. 계약 해제 거래는 제외하며,
         감정평가나 호가가 아니라 신고된 실거래의 중위값입니다.
       </DataNote>
-    </div>
-  );
-}
-
-function Tile({ label, value, hint, testId }: { label: string; value: string; hint: string; testId?: string }) {
-  return (
-    <div className="card card-pad">
-      <p className="label">{label}</p>
-      <p className="num mt-1 text-xl font-semibold text-ink-800" data-testid={testId}>
-        {value}
-      </p>
-      <p className="mt-0.5 text-[10px] leading-relaxed text-slate-400">{hint}</p>
     </div>
   );
 }

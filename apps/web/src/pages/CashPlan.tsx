@@ -131,11 +131,13 @@ export default function CashPlan() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+      <div className="grid items-start gap-4 xl:grid-cols-[360px_1fr]">
         <Card title="매매·대출 조건" subtitle="단지·면적을 고르면 최근 6개월 중위 매매가를 채웁니다.">
           <div className="space-y-3.5">
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-slate-600">단지</span>
+            <div className="space-y-2.5 border-b border-line-soft pb-3.5">
+              <p className="label mb-0">대상 주택</p>
+              <label className="block">
+                <span className="mb-1.5 block text-[11.5px] font-medium text-ink-600">단지</span>
               <select
                 className="select"
                 value={complexId}
@@ -152,9 +154,9 @@ export default function CashPlan() {
             </label>
 
             <label className="block">
-              <span className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-600">
+              <span className="mb-1.5 flex items-center justify-between text-[11.5px] font-medium text-ink-600">
                 전용면적 구간
-                {area && <span className="num text-[11px] text-slate-400">{formatAreaWithPyeong(area.areaM2)}</span>}
+                {area && <span className="num text-[10.5px] font-normal text-ink-400">{formatAreaWithPyeong(area.areaM2)}</span>}
               </span>
               <select
                 className="select"
@@ -185,7 +187,7 @@ export default function CashPlan() {
                 data-testid="cash-price"
               />
             </Field>
-            <p className="-mt-2 flex flex-wrap items-center gap-2 text-[10px] leading-relaxed text-slate-400">
+            <p className="-mt-1 flex flex-wrap items-center gap-2 text-[10px] leading-relaxed text-ink-300">
               <span>
                 {customPrice
                   ? '직접 입력값을 쓰고 있습니다. 단지를 바꿔도 매매가는 유지됩니다.'
@@ -196,7 +198,7 @@ export default function CashPlan() {
               {customPrice && reference && (
                 <button
                   type="button"
-                  className="underline decoration-dotted text-teal-700"
+                  className="font-medium text-accent underline decoration-accent/30 underline-offset-2"
                   onClick={() => {
                     setCustomPrice(false);
                     setPriceManwon(String(Math.round(reference.medianPriceKrw / 10_000)));
@@ -206,8 +208,11 @@ export default function CashPlan() {
                 </button>
               )}
             </p>
+            </div>
 
-            <Field label="연소득" hint={formatKrwKorean(annualIncomeKrw)}>
+            <div className="space-y-2.5 border-b border-line-soft pb-3.5">
+              <p className="label mb-0">소득·기존 대출</p>
+              <Field label="연소득" hint={formatKrwKorean(annualIncomeKrw)}>
               <input
                 type="number"
                 className="select num"
@@ -230,6 +235,10 @@ export default function CashPlan() {
                 aria-label="기존 대출 연 원리금(만원)"
               />
             </Field>
+            </div>
+
+            <div className="space-y-2.5 border-b border-line-soft pb-3.5">
+              <p className="label mb-0">대출 조건</p>
 
             <div className="grid grid-cols-2 gap-2">
               <Field label="LTV 상한" hint={`${ltvPct}%`}>
@@ -318,21 +327,21 @@ export default function CashPlan() {
               </Field>
             </div>
 
-            <div className="space-y-1.5 rounded-lg bg-slate-50 px-3 py-2">
-              <label className="flex cursor-pointer items-center gap-2 text-[11px] text-slate-700">
+            <div className="space-y-1.5 rounded-md border border-line bg-canvas/60 px-3 py-2">
+              <label className="flex cursor-pointer items-center gap-2 text-[11px] text-ink-700">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 accent-teal-600"
+                  className="h-3.5 w-3.5 accent-accent"
                   checked={firstTimeBuyer}
                   onChange={(event) => setFirstTimeBuyer(event.target.checked)}
                   data-testid="cash-first-time"
                 />
                 생애최초 주택 구입(취득세 200만원 한도 감면)
               </label>
-              <label className="flex cursor-pointer items-center gap-2 text-[11px] text-slate-700">
+              <label className="flex cursor-pointer items-center gap-2 text-[11px] text-ink-700">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 accent-teal-600"
+                  className="h-3.5 w-3.5 accent-accent"
                   checked={brokerageVat}
                   onChange={(event) => setBrokerageVat(event.target.checked)}
                 />
@@ -351,30 +360,31 @@ export default function CashPlan() {
                 aria-label="기타 비용(만원)"
               />
             </Field>
+            </div>
           </div>
         </Card>
 
         <div className="space-y-4">
-          <section className="card border border-teal-500/40 ring-1 ring-teal-500/20" data-testid="cash-result">
+          <section className="card" data-testid="cash-result">
             <div className="card-pad">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="label">입주에 필요한 자기자본(현금)</p>
-                  <p className="num mt-1 text-3xl font-semibold tracking-tight text-teal-700">{formatKrwKorean(plan.cashNeededKrw)}</p>
-                  <p className="mt-1 text-[12px] text-slate-500">
-                    매매가의 <span className="num font-semibold text-slate-700">{plan.cashRatioPct.toFixed(1)}%</span> · 매매가 {formatKrwKorean(plan.priceKrw)}
+                  <p className="num mt-1.5 text-[30px] font-semibold leading-none tracking-[-0.035em] text-ink-900">{formatKrwKorean(plan.cashNeededKrw)}</p>
+                  <p className="mt-1.5 text-[11.5px] text-ink-500">
+                    매매가의 <span className="num font-semibold text-ink-800">{plan.cashRatioPct.toFixed(1)}%</span> · 매매가 {formatKrwKorean(plan.priceKrw)}
                   </p>
                 </div>
-                <div className="rounded-lg bg-slate-50 px-3 py-2 text-right">
+                <div className="border-l border-line-soft pl-4 text-right">
                   <p className="label">대출 한도</p>
-                  <p className="num text-lg font-semibold text-ink-800">{formatKrwKorean(plan.loanKrw)}</p>
-                  <p className="text-[10px] text-slate-400">
+                  <p className="num mt-1 text-[18px] font-semibold tracking-[-0.02em] text-ink-900">{formatKrwKorean(plan.loanKrw)}</p>
+                  <p className="text-[10px] text-ink-400">
                     {plan.loan.binding === 'ltv' ? `LTV ${plan.loan.ltvPct}% 제약` : plan.loan.binding === 'dsr' ? `DSR ${plan.loan.dsrPct}% 제약` : '대출 불가'}
                   </p>
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-4 lg:grid-cols-4">
                 <Tile label="자기자본" value={formatKrwKorean(plan.equityKrw)} hint={`매매가 − 대출 ${formatKrwKorean(plan.loanKrw)}`} />
                 <Tile label="취득세 합계" value={formatKrwKorean(plan.acquisitionTax.totalKrw)} hint={`취득세율 ${plan.acquisitionTax.ratePct}%`} />
                 <Tile label="중개보수" value={formatKrwKorean(plan.brokerage.totalKrw)} hint={`상한 ${plan.brokerage.ratePct}%${plan.brokerage.vatKrw > 0 ? ' · 부가세 포함' : ''}`} />
@@ -383,7 +393,7 @@ export default function CashPlan() {
             </div>
           </section>
 
-          <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
+          <div className="grid items-start gap-4 lg:grid-cols-[1.1fr_1fr]">
             <Card title="필요 현금 구성" subtitle="자기자본 + 취득세 + 중개보수 + 기타 비용">
               {breakdownPoints.length > 0 ? (
                 <CashComposition rows={breakdownPoints} totalKrw={plan.cashNeededKrw} />
@@ -408,7 +418,7 @@ export default function CashPlan() {
                   <dd className="num text-base font-semibold text-teal-700">{formatKrwKorean(plan.cashNeededKrw)}</dd>
                 </div>
               </dl>
-              <div className="mt-1 rounded-lg bg-slate-50 px-3 py-2 text-[10px] leading-relaxed text-slate-500">
+              <div className="mt-1 border-t border-line-soft pt-2 text-[10px] leading-relaxed text-ink-400">
                 취득세 본세 {formatKrwKorean(plan.acquisitionTax.acquisitionTaxKrw)} · 지방교육세 {formatKrwKorean(plan.acquisitionTax.localEducationTaxKrw)}
                 {plan.acquisitionTax.ruralSpecialTaxKrw > 0 ? ` · 농특세 ${formatKrwKorean(plan.acquisitionTax.ruralSpecialTaxKrw)}` : ''}
                 {plan.acquisitionTax.reductionKrw > 0 ? ` · 감면 −${formatKrwKorean(plan.acquisitionTax.reductionKrw)}` : ''}
@@ -423,9 +433,9 @@ export default function CashPlan() {
               <Tile label="적용 금리" value={`${plan.loan.appliedRatePct.toFixed(2)}%`} hint={`기본 ${rate.toFixed(2)}% + 스트레스 ${stressRate.toFixed(2)}%p`} />
               <Tile label="필요 연소득" value={formatKrwKorean(plan.loan.requiredAnnualIncomeKrw)} hint="이 대출을 유지하려면" />
             </div>
-            <ul className="mt-3 space-y-1">
+            <ul className="mt-3 divide-y divide-line-soft border-t border-line-soft">
               {plan.notes.map((note) => (
-                <li key={note} className="rounded bg-slate-50 px-3 py-1.5 text-[10px] leading-relaxed text-slate-500">
+                <li key={note} className="py-1.5 text-[10px] leading-relaxed text-ink-400">
                   {note}
                 </li>
               ))}
@@ -447,15 +457,15 @@ export default function CashPlan() {
 
 function Tile({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="rounded-lg border border-white/70 bg-white/80 px-3 py-2">
+    <div>
       <p className="label">{label}</p>
-      <p className="num mt-0.5 text-base font-semibold text-ink-800">{value}</p>
-      <p className="mt-0.5 text-[10px] leading-relaxed text-slate-400">{hint}</p>
+      <p className="num mt-1 text-[16px] font-semibold leading-tight tracking-[-0.02em] text-ink-900">{value}</p>
+      <p className="mt-0.5 text-[10px] leading-relaxed text-ink-400">{hint}</p>
     </div>
   );
 }
 
-const COMPOSITION_COLORS = ['#0f766e', '#f59e0b', '#6366f1', '#94a3b8'];
+const COMPOSITION_COLORS = ['#0e7c6b', '#3b6fd4', '#7c4ddb', '#a8b0bd'];
 
 function CashComposition({
   rows,
@@ -467,7 +477,7 @@ function CashComposition({
   return (
     <div>
       <div
-        className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100"
+        className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100"
         role="img"
         aria-label={`필요 현금 구성: ${rows.map((row) => `${row.label} ${formatKrwKorean(row.amountKrw)}`).join(', ')}`}
       >
@@ -486,16 +496,16 @@ function CashComposition({
       <ul className="mt-3 space-y-2">
         {rows.map((row, index) => (
           <li key={row.key} className="flex items-center justify-between gap-2 text-[11px]">
-            <span className="flex min-w-0 items-center gap-1.5 text-slate-600">
+            <span className="flex min-w-0 items-center gap-1.5 text-ink-500">
               <span
                 className="h-2 w-2 shrink-0 rounded-full"
                 style={{ backgroundColor: COMPOSITION_COLORS[index % COMPOSITION_COLORS.length] }}
               />
               <span className="truncate">{row.label}</span>
             </span>
-            <span className="num shrink-0 font-semibold text-slate-700">
+            <span className="num shrink-0 font-semibold text-ink-800">
               {formatKrwKorean(row.amountKrw)}
-              <span className="ml-1 font-normal text-slate-400">
+              <span className="ml-1 font-normal text-ink-300">
                 {totalKrw > 0 ? `${((row.amountKrw / totalKrw) * 100).toFixed(1)}%` : ''}
               </span>
             </span>
